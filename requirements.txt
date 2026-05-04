@@ -1,0 +1,10 @@
+# fusion2URDF — Python dependencies
+#
+# Runtime: No external dependencies required (stdlib only)
+#
+# The Fusion 360 API (adsk.*) is provided by Fusion 360 at runtime.
+# The pip package below is IDE stubs only — for autocomplete in VS Code etc.
+
+# Optional: IDE autocomplete stubs for Fusion 360 API
+# Uncomment if you want autocomplete in your editor:
+# adsk

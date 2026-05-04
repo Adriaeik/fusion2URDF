@@ -1,0 +1,457 @@
+<?xml version="1.0"?>
+<robot name="Assem1">
+
+  <!-- Materials -->
+  <material name="Steel">
+    <color rgba="0.000 0.753 0.000 1.0"/>
+  </material>
+  <material name="Generico">
+    <color rgba="0.878 0.875 0.859 1.0"/>
+  </material>
+  <material name="material">
+    <color rgba="0.961 0.961 0.965 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0.000000 0.080883 0.000000" rpy="0 0 0"/>
+      <mass value="458.518628"/>
+      <inertia ixx="1.383314e+01" ixy="3.228896e-17" ixz="2.339482e-14"
+               iyy="2.563791e+01" iyz="1.478321e-15" izz="1.383314e+01"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/base_link.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/base_link_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Base0">
+    <inertial>
+      <origin xyz="0.049736 0.190786 -0.001303" rpy="0 0 0"/>
+      <mass value="239.695814"/>
+      <inertia ixx="9.415739e+00" ixy="-3.081859e+00" ixz="4.692144e-02"
+               iyy="5.456557e+00" iyz="9.346255e-02" izz="1.153565e+01"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Base0.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Base0_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Arm01">
+    <inertial>
+      <origin xyz="0.053529 0.366854 -0.000002" rpy="0 0 0"/>
+      <mass value="68.994369"/>
+      <inertia ixx="1.074135e+01" ixy="-1.111681e-01" ixz="-1.230563e-06"
+               iyy="4.476331e-01" iyz="3.364830e-05" izz="1.039438e+01"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.020000 1.000000 -0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Arm01.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.020000 1.000000 -0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Arm01_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Arm02">
+    <inertial>
+      <origin xyz="-0.002051 0.071594 0.110143" rpy="0 0 0"/>
+      <mass value="122.591597"/>
+      <inertia ixx="9.697336e-01" ixy="7.134262e-03" ixz="2.475546e-03"
+               iyy="1.599893e+00" iyz="-1.000127e-01" izz="1.865600e+00"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.177000 0.100000 0.120000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Arm02.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.177000 0.100000 0.120000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Arm02_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="for_arm_group">
+    <inertial>
+      <origin xyz="0.465627 -0.000033 -0.000000" rpy="0 0 0"/>
+      <mass value="76.866253"/>
+      <inertia ixx="2.134041e-01" ixy="9.151683e-04" ixz="-1.210196e-05"
+               iyy="7.730913e+00" iyz="-1.254132e-06" izz="7.717249e+00"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.367000 -0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/for_arm_group.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.367000 -0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/for_arm_group_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Part02">
+    <inertial>
+      <origin xyz="-0.055298 0.000000 -0.000000" rpy="0 0 0"/>
+      <mass value="8.277042"/>
+      <inertia ixx="1.609093e-02" ixy="-6.388571e-13" ixz="-2.432409e-12"
+               iyy="3.044161e-02" iyz="-6.667105e-23" izz="3.383062e-02"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.117721 -0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Part02.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.117721 -0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/Assem1/Part02_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="led_base">
+    <inertial>
+      <origin xyz="0.014027 0.006699 0.016421" rpy="0 0 0"/>
+      <mass value="0.303692"/>
+      <inertia ixx="8.300206e-05" ixy="-6.874604e-06" ixz="5.194899e-06"
+               iyy="1.571638e-04" iyz="6.920922e-06" izz="1.945885e-04"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/led_base.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/led_base_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="servo_mount">
+    <inertial>
+      <origin xyz="-0.000000 0.002881 -0.000000" rpy="0 0 0"/>
+      <mass value="0.012073"/>
+      <inertia ixx="1.000000e-06" ixy="-7.046030e-14" ixz="-1.289899e-07"
+               iyy="1.000000e-06" iyz="2.433932e-14" izz="1.000000e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.010000 -0.024700 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/servo_mount.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="material"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.010000 -0.024700 0.000000" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/servo_mount_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_pivot">
+    <inertial>
+      <origin xyz="0.006957 0.000935 0.002918" rpy="0 0 0"/>
+      <mass value="0.003905"/>
+      <inertia ixx="1.000000e-06" ixy="-2.936949e-08" ixz="1.136656e-08"
+               iyy="1.000000e-06" iyz="1.527936e-09" izz="1.000000e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.015000 0.000000 0.002500" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/right_pivot.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Generico"/>
+    </visual>
+    <collision>
+      <origin xyz="0.015000 0.000000 0.002500" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/right_pivot_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_pivot">
+    <inertial>
+      <origin xyz="0.006957 0.000935 -0.001082" rpy="0 0 0"/>
+      <mass value="0.003905"/>
+      <inertia ixx="1.000000e-06" ixy="-2.936949e-08" ixz="1.136656e-08"
+               iyy="1.000000e-06" iyz="1.527936e-09" izz="1.000000e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.015000 -0.000000 -0.001500" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/left_pivot.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Generico"/>
+    </visual>
+    <collision>
+      <origin xyz="0.015000 -0.000000 -0.001500" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/left_pivot_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="acc_right_gripper">
+    <inertial>
+      <origin xyz="-0.004275 0.067508 -0.017078" rpy="0 0 0"/>
+      <mass value="0.053135"/>
+      <inertia ixx="7.164639e-05" ixy="3.499711e-06" ixz="-2.373468e-07"
+               iyy="5.689930e-06" iyz="4.330788e-06" izz="7.017811e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.004000 0.046200 -0.031700" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/acc_right_gripper.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Generico"/>
+    </visual>
+    <collision>
+      <origin xyz="0.004000 0.046200 -0.031700" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/acc_right_gripper_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="acc_left_gripper">
+    <inertial>
+      <origin xyz="-0.004275 0.067508 0.013078" rpy="0 0 0"/>
+      <mass value="0.053135"/>
+      <inertia ixx="7.164639e-05" ixy="3.499711e-06" ixz="2.373468e-07"
+               iyy="5.689930e-06" iyz="-4.330788e-06" izz="7.017811e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.004000 0.046200 0.027700" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/acc_left_gripper.dae" scale="1 1 1"/>
+      </geometry>
+      <material name="Generico"/>
+    </visual>
+    <collision>
+      <origin xyz="0.004000 0.046200 0.027700" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://Assem1_description/meshes/griper/acc_left_gripper_collision.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Revolute_1" type="continuous">
+    <parent link="base_link"/>
+    <child link="Base0"/>
+    <origin xyz="0.000000 0.170000 0.000000" rpy="-0.000000 -1.134464 -0.000000"/>
+    <axis xyz="-0.000000 1.000000 -0.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="Revolute_2" type="continuous">
+    <parent link="Base0"/>
+    <child link="Arm01"/>
+    <origin xyz="0.200000 0.490000 0.030000" rpy="1.047198 -1.570796 0.000000"/>
+    <axis xyz="1.000000 0.000000 0.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="Revolute3" type="continuous">
+    <parent link="Arm01"/>
+    <child link="Arm02"/>
+    <origin xyz="0.100000 1.000000 -0.000000" rpy="-1.570796 -0.000000 -1.570796"/>
+    <axis xyz="-0.000000 -0.000000 1.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="Revolute4" type="continuous">
+    <parent link="Arm02"/>
+    <child link="for_arm_group"/>
+    <origin xyz="0.189000 0.100000 0.120000" rpy="-0.000000 0.000000 -0.000000"/>
+    <axis xyz="-1.000000 0.000000 0.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="Revolute6" type="revolute">
+    <parent link="for_arm_group"/>
+    <child link="Part02"/>
+    <origin xyz="0.899000 -0.000000 -0.000000" rpy="-3.141593 -0.000000 3.141593"/>
+    <axis xyz="-0.000000 0.000000 1.000000"/>
+    <limit lower="-1.745329" upper="1.745329" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="griper_joint" type="fixed">
+    <parent link="Part02"/>
+    <child link="led_base"/>
+    <origin xyz="-0.152521 0.007500 0.024300" rpy="3.141593 -0.000000 -1.570796"/>
+  </joint>
+
+  <joint name="servo_joint" type="revolute">
+    <parent link="led_base"/>
+    <child link="servo_mount"/>
+    <origin xyz="0.007500 0.010100 0.032200" rpy="1.570796 -0.000000 0.070370"/>
+    <axis xyz="0.000000 1.000000 0.000000"/>
+    <limit lower="-1.012291" upper="0.000000" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_pivot_joint2" type="continuous">
+    <parent link="servo_mount"/>
+    <child link="right_pivot"/>
+    <origin xyz="0.010607 0.013300 0.010607" rpy="1.570796 0.263624 0.000000"/>
+    <axis xyz="-0.000000 -0.000000 1.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_pivot_joint2" type="continuous">
+    <parent link="servo_mount"/>
+    <child link="left_pivot"/>
+    <origin xyz="-0.010607 0.009300 -0.010607" rpy="-1.570796 -0.263625 -3.141593"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_pivot_joint1" type="continuous">
+    <parent link="right_pivot"/>
+    <child link="acc_right_gripper"/>
+    <origin xyz="0.030000 0.000000 -0.000000" rpy="3.141593 0.000000 0.333994"/>
+    <axis xyz="-0.000000 0.000000 -1.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_pivot_joint1" type="continuous">
+    <parent link="left_pivot"/>
+    <child link="acc_left_gripper"/>
+    <origin xyz="0.030000 -0.000000 0.000000" rpy="0.000000 -0.000000 0.333995"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <!-- ROS 2 control: generated generic system -->
+  <ros2_control name="Assem1_system" type="system">
+    <hardware>
+      <plugin>mock_components/GenericSystem</plugin>
+      <param name="cmd_topic">sim/Assem1_system/cmd</param>
+      <param name="state_topic">sim/Assem1_system/state</param>
+    </hardware>
+
+    <joint name="Revolute3">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Revolute4">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Revolute6">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Revolute_1">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Revolute_2">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_pivot_joint1">
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_pivot_joint2">
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_pivot_joint1">
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_pivot_joint2">
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="servo_joint">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+
+</robot>

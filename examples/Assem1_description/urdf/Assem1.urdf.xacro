@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="Assem1">
+
+  <!-- Materials (shared across all assemblies) -->
+  <material name="Steel">
+    <color rgba="0.000 0.753 0.000 1.0"/>
+  </material>
+  <material name="Generico">
+    <color rgba="0.878 0.875 0.859 1.0"/>
+  </material>
+  <material name="material">
+    <color rgba="0.961 0.961 0.965 1.0"/>
+  </material>
+
+  <!-- Assembly includes -->
+  <xacro:include filename="$(find Assem1_description)/urdf/assemblies/griper.urdf.xacro"/>
+  <xacro:include filename="$(find Assem1_description)/urdf/assemblies/Assem1.urdf.xacro"/>
+
+  <!-- Instantiate assemblies -->
+  <xacro:griper prefix=""/>
+  <xacro:Assem1 prefix=""/>
+
+  <!-- Mount joints (cross-assembly connections) -->
+  <!-- These define how assemblies connect to each other. -->
+  <!-- When swapping a dummy assembly with a real part, -->
+  <!-- update the include + macro call above, and adjust -->
+  <!-- parent/child link names in the mount joint below. -->
+
+  <joint name="griper_joint" type="fixed">
+    <parent link="Part02"/>
+    <child link="led_base"/>
+    <origin xyz="-0.152521 0.007500 0.024300" rpy="3.141593 -0.000000 -1.570796"/>
+  </joint>
+
+</robot>

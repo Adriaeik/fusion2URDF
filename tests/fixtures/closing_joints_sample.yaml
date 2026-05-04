@@ -1,0 +1,131 @@
+# Reference robot_data.yaml for a closed-loop gripper.
+#
+# Used by tests/test_export_pipeline.py: assertions about the emitted
+# YAML format (passive flag per joint, closing_joints section).
+# Downstream URDF→USD pipelines that re-apply the sidecar may keep a
+# mirror copy of this fixture; if so, keep them in sync.
+#
+# Topology: a parallel-jaw gripper driven by one servo through a
+# four-bar linkage.  servo_joint rotates the servo_mount; left_pivot/
+# right_pivot are the user-facing motion joints; the two slider joints
+# close the four-bar loop and are emitted to the closing_joints
+# sidecar (URDF can't model cycles).
+
+robot_name: gripper
+
+links:
+  base_link:
+    mass_kg: 0.430
+  servo_mount:
+    mass_kg: 0.190
+  left_pivot:
+    mass_kg: 0.012
+  right_pivot:
+    mass_kg: 0.012
+  left_gripper:
+    mass_kg: 0.028
+  right_gripper:
+    mass_kg: 0.028
+
+joints:
+  servo_joint:
+    type: revolute
+    parent: base_link
+    child: servo_mount
+    origin_xyz_m: [0.000000, 0.000000, 0.040000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [0.0000, 0.0000, 1.0000]
+    is_mount: false
+    passive: false
+    limits:
+      lower: -1.570796
+      upper: 1.570796
+      effort: 2.0
+      velocity: 6.28
+
+  left_pivot_joint:
+    type: revolute
+    parent: servo_mount
+    child: left_pivot
+    origin_xyz_m: [-0.020000, 0.000000, 0.010000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [0.0000, 1.0000, 0.0000]
+    is_mount: false
+    passive: false
+    limits:
+      lower: -0.785398
+      upper: 0.785398
+      effort: 1.0
+      velocity: 4.0
+
+  right_pivot_joint:
+    type: revolute
+    parent: servo_mount
+    child: right_pivot
+    origin_xyz_m: [0.020000, 0.000000, 0.010000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [0.0000, 1.0000, 0.0000]
+    is_mount: false
+    passive: false
+    limits:
+      lower: -0.785398
+      upper: 0.785398
+      effort: 1.0
+      velocity: 4.0
+
+  left_jaw_joint:
+    type: prismatic
+    parent: left_pivot
+    child: left_gripper
+    origin_xyz_m: [-0.030000, 0.000000, 0.000000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [1.0000, 0.0000, 0.0000]
+    is_mount: false
+    # Free pivot driven by the four-bar — no controller drive.  Tagged
+    # ``passive_left_jaw_joint`` in Fusion; plugin stripped the prefix
+    # and set the flag below.
+    passive: true
+
+  right_jaw_joint:
+    type: prismatic
+    parent: right_pivot
+    child: right_gripper
+    origin_xyz_m: [0.030000, 0.000000, 0.000000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [1.0000, 0.0000, 0.0000]
+    is_mount: false
+    passive: true
+
+# Closing joints close the four-bar loop.  URDF can't model cycles,
+# so they're excluded from the URDF tree and emitted here.  Downstream
+# URDF→USD pipelines re-apply them as independent
+# UsdPhysicsPrismaticJoint prims with body0=base_link / body1=jaw,
+# no DriveAPI (passive constraints — solver enforces the loop).
+closing_joints:
+  - name: left_slider
+    source: user_tag
+    type: prismatic
+    parent: base_link
+    child: left_gripper
+    origin_xyz_m: [-0.094000, 0.020000, 0.007000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [1.0000, 0.0000, 0.0000]
+    limits:
+      lower: -0.050000
+      upper: 0.050000
+      effort: 0.0
+      velocity: 0.0
+
+  - name: right_slider
+    source: user_tag
+    type: prismatic
+    parent: base_link
+    child: right_gripper
+    origin_xyz_m: [0.094000, 0.020000, 0.007000]
+    origin_rpy_rad: [0.000000, 0.000000, 0.000000]
+    axis: [1.0000, 0.0000, 0.0000]
+    limits:
+      lower: -0.050000
+      upper: 0.050000
+      effort: 0.0
+      velocity: 0.0

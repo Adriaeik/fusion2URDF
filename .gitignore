@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+
+# Runtime export artifacts — regenerated on every run.
+debug/
+
+# Personal exporter config — copy from xacro_export.template.toml
+# and edit; the personal file stays local so each contributor can
+# keep their own defaults without churning the repo.
+xacro_export.toml
+
+# Editor scratch
+.vscode/*
+!.vscode/settings.json
+
+# Test scratch
+.test_tmp/
+.test_tmp_ci/

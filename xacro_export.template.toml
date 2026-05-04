@@ -1,0 +1,68 @@
+﻿# ─────────────────────────────────────────────────────────────────
+# Fusion URDF/XACRO Exporter — User Config (template)
+# ─────────────────────────────────────────────────────────────────
+#
+# Copy this file to ``fusion2URDF/xacro_export.toml``
+# (without the .template suffix) and edit to taste.  The personal copy
+# is gitignored so your settings stay local.
+#
+# When the plugin runs, it looks for ``xacro_export.toml`` in the
+# plugin folder. If the file is absent, the plugin uses the hardcoded
+# defaults below and prompts you via dialogs for the rest.
+#
+# ─────────────────────────────────────────────────────────────────
+
+[output]
+# "verbose" → ship everything (debug folder, docs, README, RViz, etc.)
+# "minimal" → just URDF + meshes + package.xml + CMakeLists + (one)
+#             launch file.  Drops debug/, docs/, robot_data.yaml,
+#             images/, rviz/, config/, README.md.
+verbosity = "verbose"
+
+# Wrap the generated package directory in a .zip and remove the
+# directory afterwards.  Convenient when shipping the description
+# package to another tool or over a network.
+zip = false
+
+# Override the zip filename.  Empty = "<package_name>.zip".
+zip_name = ""
+
+[features]
+# Fine-grained toggles.  These are layered on top of [output].verbosity:
+# the verbosity preset sets defaults, then anything you write here
+# overrides per-key.  Comment a line out to fall back to the preset.
+include_debug = true              # debug/ folder (snapshot, transforms, log)
+include_docs = true               # docs/transforms.md
+include_robot_data_yaml = true    # robot_data.yaml
+include_screenshot = true         # images/robot.png
+include_launch = true             # launch/display.launch.py
+include_rviz = true               # rviz/display.rviz + config/joint_state.yaml
+include_readme = true             # auto-generated README.md
+include_ros2_control = true       # ros2_control XML + config/ros2_controllers.yaml
+
+[mesh]
+# "dae" = single-file COLLADA, meters, URDF scale="1".  Friendliest
+#         for Gazebo / RViz / Isaac Sim.
+# "obj" = Fusion native OBJ + sidecar MTL, centimeters, URDF scale="0.01".
+visual_format = "dae"
+
+# Default collision when a link has no explicit !collision_* member:
+# "primitive"    → fit a box / cylinder / sphere to the bbox
+# "convex_hull"  → generate a convex STL from visual OBJ vertices
+# "visual_reuse" → use the visual mesh as collision (heavy but exact)
+collision_method = "primitive"
+
+# Mesh resolution from Fusion: "low", "medium", "high"
+mesh_refinement = "medium"
+
+[ros2_control]
+# Generic mock hardware lets the exported package start controller_manager
+# immediately. Replace with your real hardware plugin when integrating
+# actual drivers, or disable the feature above.
+hardware_plugin = "mock_components/GenericSystem"
+update_rate = 100
+
+# Comma-separated command interfaces generated for each movable,
+# non-passive joint. All movable joints always get position/velocity/effort
+# state interfaces for joint_state_broadcaster.
+command_interfaces = "position,velocity"

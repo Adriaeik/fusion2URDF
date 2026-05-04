@@ -1,0 +1,50 @@
+{
+    "_comment": "Ground truth for fixture-based testing. Validated by designer against real Fusion model. Updated 2026-04-30 for the rigid-group merge refactor: Rigid Group 7 now collapses zed2i_camera_link + zed2i_link + collision_zed into ONE merged 'zed2i_link', and the internal joint zed2i_camera_center_joint is dropped.",
+    "_snapshot": "snapshot.json (Panther + turret, basic_platform)",
+
+    "model": {
+        "name": "basic_platform",
+        "root_link": "base_link",
+        "link_count": 11,
+        "joint_count": 10,
+        "assembly_count": 4,
+        "assemblies": ["dummy_panther", "dummy_zed2i", "rail_mount_plate", "turret"]
+    },
+
+    "expected_joints": {
+        "rl_wheel":                  {"type": "continuous", "parent": "base_link",          "child": "rl_wheel_link"},
+        "fl_wheel":                  {"type": "continuous", "parent": "base_link",          "child": "fl_wheel_link"},
+        "fr_wheel":                  {"type": "continuous", "parent": "base_link",          "child": "fr_wheel_link"},
+        "rr_wheel":                  {"type": "continuous", "parent": "base_link",          "child": "rr_wheel_link"},
+        "panther_to_mount":          {"type": "prismatic", "parent": "base_link",          "child": "rail_mount_link"},
+        "mount_to_turret":           {"type": "fixed",     "parent": "rail_mount_link",    "child": "fase_link"},
+        "Azimuth":                   {"type": "revolute",  "parent": "fase_link",          "child": "neck_link"},
+        "Elevation":                 {"type": "revolute",  "parent": "neck_link",          "child": "head_link"},
+        "asm_mount":                 {"type": "fixed",     "parent": "fase_link",          "child": "asm_mount_link"},
+        "Rigid 13":                  {"type": "fixed",     "parent": "head_link",          "child": "zed2i_link"}
+    },
+
+    "expected_shapes": {
+        "rail_mount_link":   {"shape": "box",      "note": "flat mounting plate"},
+        "base_link":         {"shape": "box",      "note": "rectangular chassis"},
+        "rr_wheel_link":     {"shape": "cylinder", "note": "wheel, axis=Y", "axis": 1},
+        "rl_wheel_link":     {"shape": "cylinder", "note": "wheel, axis=Y", "axis": 1},
+        "fl_wheel_link":     {"shape": "cylinder", "note": "wheel, axis=Y", "axis": 1},
+        "fr_wheel_link":     {"shape": "cylinder", "note": "wheel, axis=Y", "axis": 1},
+        "fase_link":         {"shape": "cylinder", "note": "round flange under turret"},
+        "neck_link":         {"shape": "box",      "note": "long arm/beam"},
+        "head_link":         {"shape": "box",      "note": "flat head plate"},
+        "asm_mount_link":    {"shape": "cylinder", "note": "mounting ring"},
+        "zed2i_link":        {"shape": "box",      "note": "merged camera + housing (Rigid Group 7)"}
+    },
+
+    "rigid_groups": {
+        "Rigid Group 7": {
+            "anchor": "zed2i_link",
+            "merged_link_name": "zed2i_link",
+            "collision_source": "collision_zed",
+            "collapsed_members": ["zed2i_camera_link", "collision_zed"],
+            "internal_joints_dropped": ["zed2i_camera_center_joint"]
+        }
+    }
+}

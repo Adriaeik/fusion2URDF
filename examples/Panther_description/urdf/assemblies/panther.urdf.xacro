@@ -1,0 +1,289 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panther_macro">
+
+  <xacro:macro name="panther" params="prefix">
+
+    <!-- Links -->
+    <link name="${prefix}base_link">
+      <inertial>
+        <origin xyz="0.052686 -0.030612 0.049417" rpy="0 0 0"/>
+        <mass value="136.252062"/>
+        <inertia ixx="2.214653e+00" ixy="1.452886e-01" ixz="7.545022e-02"
+                 iyy="3.132061e+00" iyz="-2.898040e-02" izz="4.644726e+00"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/base_link.dae" scale="1 1 1"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/base_link_collision.stl" scale="0.01 0.01 0.01"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${prefix}fr_wheel_base_link"/>
+
+    <link name="${prefix}fl_wheel_base_link"/>
+
+    <link name="${prefix}rr_wheel_base_link"/>
+
+    <link name="${prefix}rl_wheel_base_link"/>
+
+    <link name="${prefix}cover_link"/>
+
+    <link name="${prefix}imu_link"/>
+
+    <link name="${prefix}base_footprint"/>
+
+    <link name="${prefix}front_bumper_link"/>
+
+    <link name="${prefix}rear_bumper_link"/>
+
+    <link name="${prefix}fr_wheel_link">
+      <inertial>
+        <origin xyz="0.000000 0.021114 -0.000022" rpy="0 0 0"/>
+        <mass value="2.691777"/>
+        <inertia ixx="2.369164e-02" ixy="3.907338e-06" ixz="-4.192381e-08"
+                 iyy="3.451260e-02" iyz="-1.097073e-06" izz="2.368851e-02"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/fr_wheel_link.dae" scale="1 1 1"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/fr_wheel_link_collision.stl" scale="0.01 0.01 0.01"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${prefix}fl_wheel_link">
+      <inertial>
+        <origin xyz="-0.000000 -0.021114 -0.000022" rpy="0 0 0"/>
+        <mass value="2.691777"/>
+        <inertia ixx="2.369165e-02" ixy="3.905317e-06" ixz="5.143044e-08"
+                 iyy="3.451260e-02" iyz="1.098559e-06" izz="2.368852e-02"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/fl_wheel_link.dae" scale="1 1 1"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/fl_wheel_link_collision.stl" scale="0.01 0.01 0.01"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${prefix}rr_wheel_link">
+      <inertial>
+        <origin xyz="0.000000 0.021114 -0.000022" rpy="0 0 0"/>
+        <mass value="2.691777"/>
+        <inertia ixx="2.369164e-02" ixy="3.907338e-06" ixz="-4.192381e-08"
+                 iyy="3.451260e-02" iyz="-1.097073e-06" izz="2.368851e-02"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/rr_wheel_link.dae" scale="1 1 1"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/rr_wheel_link_collision.stl" scale="0.01 0.01 0.01"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${prefix}rl_wheel_link">
+      <inertial>
+        <origin xyz="-0.000000 -0.021114 -0.000022" rpy="0 0 0"/>
+        <mass value="2.691777"/>
+        <inertia ixx="2.369165e-02" ixy="3.905317e-06" ixz="5.143044e-08"
+                 iyy="3.451260e-02" iyz="1.098559e-06" izz="2.368852e-02"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/rl_wheel_link.dae" scale="1 1 1"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://Panther_description/meshes/panther/rl_wheel_link_collision.stl" scale="0.01 0.01 0.01"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${prefix}mount_link"/>
+
+    <link name="${prefix}lights_channel_1_link"/>
+
+    <link name="${prefix}lights_channel_2_link"/>
+
+    <!-- Joints (internal to assembly) -->
+    <joint name="${prefix}fr_wheel_base_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}fr_wheel_base_link"/>
+      <origin xyz="0.220000 -0.258000 0.000000" rpy="-0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <joint name="${prefix}fl_wheel_base_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}fl_wheel_base_link"/>
+      <origin xyz="0.220000 0.258000 0.000000" rpy="0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <joint name="${prefix}rr_wheel_base_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}rr_wheel_base_link"/>
+      <origin xyz="-0.220000 -0.258000 0.000000" rpy="0.000000 -0.000000 -0.000000"/>
+    </joint>
+
+    <joint name="${prefix}rl_wheel_base_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}rl_wheel_base_link"/>
+      <origin xyz="-0.220000 0.258000 -0.000000" rpy="0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <joint name="${prefix}body_to_cover_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}cover_link"/>
+      <origin xyz="0.000000 -0.000000 0.140000" rpy="0.000000 0.000000 -0.000000"/>
+    </joint>
+
+    <joint name="${prefix}body_to_imu_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}imu_link"/>
+      <origin xyz="0.169000 0.025000 0.092000" rpy="0.000000 -0.000000 -1.570796"/>
+    </joint>
+
+    <joint name="${prefix}body_to_footprint_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}base_footprint"/>
+      <origin xyz="-0.000000 0.000000 -0.182500" rpy="0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <joint name="${prefix}body_to_front_bumper_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}front_bumper_link"/>
+      <origin xyz="0.362000 0.000000 0.000000" rpy="0.000000 -0.000000 -0.000000"/>
+    </joint>
+
+    <joint name="${prefix}body_to_rear_bumper_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}rear_bumper_link"/>
+      <origin xyz="-0.362000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <joint name="${prefix}fr_wheel_joint" type="continuous">
+      <parent link="${prefix}fr_wheel_base_link"/>
+      <child link="${prefix}fr_wheel_link"/>
+      <origin xyz="0.000000 -0.091000 0.000000" rpy="-0.000000 -0.000000 0.000000"/>
+      <axis xyz="-0.000000 -1.000000 -0.000000"/>
+      <limit effort="100.0" velocity="1.00"/>
+    </joint>
+
+    <joint name="${prefix}fl_wheel_joint" type="continuous">
+      <parent link="${prefix}fl_wheel_base_link"/>
+      <child link="${prefix}fl_wheel_link"/>
+      <origin xyz="0.000000 0.091000 0.000000" rpy="0.000000 -0.000000 0.000000"/>
+      <axis xyz="0.000000 -1.000000 0.000000"/>
+      <limit effort="100.0" velocity="1.00"/>
+    </joint>
+
+    <joint name="${prefix}rr_wheel_joint" type="continuous">
+      <parent link="${prefix}rr_wheel_base_link"/>
+      <child link="${prefix}rr_wheel_link"/>
+      <origin xyz="0.000000 -0.091000 -0.000000" rpy="0.000000 0.000000 -0.000000"/>
+      <axis xyz="0.000000 -1.000000 0.000000"/>
+      <limit effort="100.0" velocity="1.00"/>
+    </joint>
+
+    <joint name="${prefix}rl_wheel_joint" type="continuous">
+      <parent link="${prefix}rl_wheel_base_link"/>
+      <child link="${prefix}rl_wheel_link"/>
+      <origin xyz="0.000000 0.091000 0.000000" rpy="0.000000 -0.000000 0.000000"/>
+      <axis xyz="0.000000 -1.000000 0.000000"/>
+      <limit effort="100.0" velocity="1.00"/>
+    </joint>
+
+    <joint name="${prefix}cover_to_mount_joint" type="fixed">
+      <parent link="${prefix}cover_link"/>
+      <child link="${prefix}mount_link"/>
+      <origin xyz="-0.000000 -0.000000 0.031500" rpy="-0.000000 0.000000 -0.000000"/>
+    </joint>
+
+    <joint name="${prefix}front_bumper_to_lights_channel_1_joint" type="fixed">
+      <parent link="${prefix}front_bumper_link"/>
+      <child link="${prefix}lights_channel_1_link"/>
+      <origin xyz="-0.000000 0.000000 0.018500" rpy="0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <joint name="${prefix}rear_bumper_to_lights_channel_2_joint" type="fixed">
+      <parent link="${prefix}rear_bumper_link"/>
+      <child link="${prefix}lights_channel_2_link"/>
+      <origin xyz="0.000000 0.000000 0.018500" rpy="0.000000 -0.000000 0.000000"/>
+    </joint>
+
+    <!-- ROS 2 control: generated generic system -->
+    <ros2_control name="${prefix}panther_system" type="system">
+      <hardware>
+        <plugin>mock_components/GenericSystem</plugin>
+        <param name="cmd_topic">sim/panther_system/cmd</param>
+        <param name="state_topic">sim/panther_system/state</param>
+      </hardware>
+
+      <joint name="${prefix}fl_wheel_joint">
+        <command_interface name="position"/>
+        <command_interface name="velocity"/>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+      <joint name="${prefix}fr_wheel_joint">
+        <command_interface name="position"/>
+        <command_interface name="velocity"/>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+      <joint name="${prefix}rl_wheel_joint">
+        <command_interface name="position"/>
+        <command_interface name="velocity"/>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+      <joint name="${prefix}rr_wheel_joint">
+        <command_interface name="position"/>
+        <command_interface name="velocity"/>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+    </ros2_control>
+
+  </xacro:macro>
+
+</robot>

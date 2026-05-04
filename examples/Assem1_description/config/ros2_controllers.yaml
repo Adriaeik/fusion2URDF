@@ -1,0 +1,29 @@
+# Generated ros2_control controllers
+# Publishes joint states on: /joint_states
+# Command topics use: /<controller_name>/commands
+/**:
+  controller_manager:
+    ros__parameters:
+      update_rate: 100
+
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
+      position_controller:
+        type: forward_command_controller/ForwardCommandController
+      velocity_controller:
+        type: forward_command_controller/ForwardCommandController
+
+  joint_state_broadcaster:
+    ros__parameters: {}
+
+  # Command topic: /position_controller/commands
+  position_controller:
+    ros__parameters:
+      joints: [Revolute3, Revolute4, Revolute6, Revolute_1, Revolute_2, servo_joint]
+      interface_name: position
+
+  # Command topic: /velocity_controller/commands
+  velocity_controller:
+    ros__parameters:
+      joints: [Revolute3, Revolute4, Revolute6, Revolute_1, Revolute_2, servo_joint]
+      interface_name: velocity

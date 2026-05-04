@@ -1,0 +1,17 @@
+# Joint configuration for joint_state_publisher_gui
+
+joint_state_publisher:
+  ros__parameters:
+    # Joint names and default positions
+    zeros:
+      fl_wheel_joint: 0.0
+      fr_wheel_joint: 0.0
+      rl_wheel_joint: 0.0
+      rr_wheel_joint: 0.0
+
+    # Joints to publish
+    source_list:
+      - fl_wheel_joint
+      - fr_wheel_joint
+      - rl_wheel_joint
+      - rr_wheel_joint

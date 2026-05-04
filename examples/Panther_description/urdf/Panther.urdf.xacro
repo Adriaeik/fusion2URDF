@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="Panther">
+
+  <!-- Assembly includes -->
+  <xacro:include filename="$(find Panther_description)/urdf/assemblies/panther.urdf.xacro"/>
+
+  <!-- Instantiate assemblies -->
+  <xacro:panther prefix=""/>
+
+</robot>
