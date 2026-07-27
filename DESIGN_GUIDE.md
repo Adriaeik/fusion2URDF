@@ -1,4 +1,4 @@
-﻿# Design Guide
+# Design Guide
 
 This guide describes the recommended way to build Fusion 360 robot
 models for the URDF/Xacro exporter.
@@ -252,6 +252,12 @@ Good cases for regular joints:
 Use as-built joints only when the exact joint origin is not important,
 or when you intentionally connect an already-positioned subassembly as a
 single link.
+
+Nested regular joints inside subassemblies (including mirrored mounts)
+are supported: the exporter proxies them into assembly context so Fusion
+exposes the real hinge origin. If a movable joint still falls back to
+the child component pose in the export log, add a `!frame_*` at that
+hinge or recreate the joint. See [Limitations](docs/LIMITATIONS.md).
 
 ### Parent and Child Direction
 

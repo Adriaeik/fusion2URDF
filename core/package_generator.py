@@ -876,7 +876,7 @@ def _load_template(name: str) -> str:
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(pkg_root, "templates", "sections", name)
     if os.path.exists(path):
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             return f.read().strip()
     return ""
 

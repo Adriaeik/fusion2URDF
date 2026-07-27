@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for fusion2URDF core helpers.
 
 Run from the PARENT directory of fusion2URDF/:
@@ -358,6 +358,68 @@ def test_steiner_theorem():
     print("  steiner_theorem: PASS")
 
 
+def test_read_joint_geo_origin_cm():
+    """JointGeometry / JointOrigin origins must be read through several
+    Fusion shapes - nested Harper joints previously returned null because
+    only bare ``.origin`` was tried inside a silent ``except``."""
+    from ..core.fusion_extractor import _read_joint_geo_origin_cm
+
+    class _P:
+        def __init__(self, x, y, z):
+            self.x, self.y, self.z = x, y, z
+
+    class _GeoOrigin:
+        def __init__(self):
+            self.origin = _P(1.0, 2.0, 3.0)
+
+    class _JointOriginViaGeometry:
+        @property
+        def origin(self):
+            raise RuntimeError("Fusion InternalValidationError")
+
+        def __init__(self):
+            self.geometry = _GeoOrigin()
+
+    class _ViaTransform:
+        class _T:
+            translation = _P(4.0, 5.0, 6.0)
+
+        @property
+        def origin(self):
+            raise RuntimeError("no origin")
+
+        @property
+        def geometry(self):
+            raise RuntimeError("no geometry")
+
+        transform = _T()
+
+    assert _read_joint_geo_origin_cm(_GeoOrigin()) == (1.0, 2.0, 3.0)
+    assert _read_joint_geo_origin_cm(_JointOriginViaGeometry()) == (1.0, 2.0, 3.0)
+    assert _read_joint_geo_origin_cm(_ViaTransform()) == (4.0, 5.0, 6.0)
+    assert _read_joint_geo_origin_cm(None) is None
+    print(" read_joint_geo_origin_cm: PASS")
+
+
+def test_proxy_joint_skips_root_component():
+    from ..core.fusion_extractor import _proxy_joint_for_assembly_context
+
+    class _Log:
+        def __call__(self, *a, **k):
+            pass
+
+        def warning(self, *a, **k):
+            pass
+
+    root = object()
+    joint = object()
+    out, used = _proxy_joint_for_assembly_context(
+        joint, root, root, _Log(), "test"
+    )
+    assert out is joint and used is False
+    print(" proxy_joint_skips_root_component: PASS")
+
+
 def run_all():
     print("Running tests...\n")
     
@@ -374,6 +436,8 @@ def run_all():
     test_json_serialization()
     test_snapshot_report()
     test_steiner_theorem()
+    test_read_joint_geo_origin_cm()
+    test_proxy_joint_skips_root_component()
     
     print("\n✓ All tests passed!")
 

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for Phase 2: Robot Model Builder.
 
 Run from the PARENT directory of fusion2URDF/:
@@ -1925,26 +1925,29 @@ def test_nested_subasm_joint_axis_invariant_under_parent_rotation():
     The axis lives in the joint's local frame — assembly placement
     can't change it.
 
-    Earlier the plugin treated ``fj.axis_vector`` as already in world
-    frame.  Empirically it's in the joint's DEFINING-COMPONENT frame
-    (Fusion's API doc lies — axis came out wrong for nested joints),
-    so we now lift it through the defining assembly's
-    ``global_rotation`` before transforming into the joint's local
-    frame.  This test fakes the same sub-asm at identity vs. rotated
-    and asserts the resulting URDF axes match.
+    Fusion's ``rotationAxisVector`` is in the *root / design* context.
+    When the defining sub-asm is rotated in the parent design, the
+    extracted axis_vector is the world-rotated direction; remapping
+    with ``R_child^T * axis_world`` recovers the link-local axis.
+    This test fakes the same sub-asm at identity vs. Z-90 deg and asserts
+    the resulting URDF axes match.
     """
     import math
     from ..core.data_types import (
         FusionSnapshot, FusionOccurrence, FusionJoint, Transform3D,
     )
-    from ..core.robot_model import build_model
+    from ..core.robot_model import build_model, _rotate_vec3_by_mat3
 
     cz, sz = math.cos(math.pi / 2), math.sin(math.pi / 2)
     rot_z90 = (cz, -sz, 0.0,
                 sz,  cz, 0.0,
                 0.0, 0.0, 1.0)
+    # Link-local axis (what URDF should emit). In world = R_asm * local.
+    axis_local = (0.0, 0.0, 1.0)
 
     def _build(asm_rotation, design_clean_name="ref"):
+        # World-space axis as Fusion would return it for this placement.
+        axis_world = _rotate_vec3_by_mat3(axis_local, asm_rotation)
         snap = FusionSnapshot(
             design_name=design_clean_name, design_name_clean=design_clean_name)
         # The joint sits inside ``inner`` sub-asm — defining_component
@@ -1979,9 +1982,6 @@ def test_nested_subasm_joint_axis_invariant_under_parent_rotation():
                 local_transform=Transform3D(),
             ),
         }
-        # Joint defined inside ``inner``.  Axis vector in inner's
-        # local frame: (0, 0, 1).  Origin in inner's local frame:
-        # (0.10, 0, 0).
         snap.joints = {
             "j": FusionJoint(
                 name="j", defining_component="inner",
@@ -1990,7 +1990,7 @@ def test_nested_subasm_joint_axis_invariant_under_parent_rotation():
                 occurrence_two_path="a v1:1", occurrence_two_clean="a",
                 origin_global_m=(0.10, 0.0, 0.0),
                 origin_source="geometry.origin",
-                axis_vector=(0.0, 0.0, 1.0),  # in inner's local frame
+                axis_vector=axis_world, # root/world context (Fusion)
                 has_rotation_limits=True,
                 rotation_min=-1.0, rotation_max=1.0,
             ),
@@ -2004,7 +2004,7 @@ def test_nested_subasm_joint_axis_invariant_under_parent_rotation():
     j_id = _build(identity).joints["j"]
     j_rot = _build(rot_z90).joints["j"]
 
-    for axis_idx, expected in enumerate((0.0, 0.0, 1.0)):
+    for axis_idx, expected in enumerate(axis_local):
         assert abs(j_id.axis[axis_idx] - expected) < 1e-6, (
             f"identity reference: axis component {axis_idx} got "
             f"{j_id.axis[axis_idx]}, expected {expected}"
@@ -2017,6 +2017,457 @@ def test_nested_subasm_joint_axis_invariant_under_parent_rotation():
         )
 
     print("  nested_subasm_joint_axis_invariant_under_parent_rotation: PASS")
+
+
+def test_mirrored_subasm_axis_not_double_rotated():
+    """Mirrored sub-asm (180 deg about Y) must NOT pre-multiply the Fusion
+    world axis by the defining assembly rotation.
+
+    Harper regression: right-arm thumb MIP axis is world-tilted; lifting
+    through ``R_right_arm`` then ``R_child^T`` left it at ~(+0.39, -0.92)
+    instead of (-1, 0, 0). Correct remap is ``R_child^T * axis_world``.
+    """
+    import math
+    from ..core.data_types import (
+        FusionSnapshot, FusionOccurrence, FusionJoint, Transform3D,
+    )
+    from ..core.robot_model import build_model, _rotate_vec3_by_mat3
+
+    # 180 deg about Y - Harper's right_arm placement.
+    rot_y180 = (-1.0, 0.0, 0.0,
+                 0.0, 1.0, 0.0,
+                 0.0, 0.0, -1.0)
+    # Child link local orientation relative to the arm (non-identity,
+    # like a thumb phalanx). World = R_arm * R_local_in_arm.
+    # Use a 90 deg about Z inside the arm so the child world rotation
+    # differs from the assembly rotation (the failure mode only shows
+    # when R_child != R_defining).
+    cz, sz = math.cos(math.pi / 2), math.sin(math.pi / 2)
+    r_local = (cz, -sz, 0.0,
+               sz, cz, 0.0,
+               0.0, 0.0, 1.0)
+    r_child_world = (
+        rot_y180[0]*r_local[0] + rot_y180[1]*r_local[3] + rot_y180[2]*r_local[6],
+        rot_y180[0]*r_local[1] + rot_y180[1]*r_local[4] + rot_y180[2]*r_local[7],
+        rot_y180[0]*r_local[2] + rot_y180[1]*r_local[5] + rot_y180[2]*r_local[8],
+        rot_y180[3]*r_local[0] + rot_y180[4]*r_local[3] + rot_y180[5]*r_local[6],
+        rot_y180[3]*r_local[1] + rot_y180[4]*r_local[4] + rot_y180[5]*r_local[7],
+        rot_y180[3]*r_local[2] + rot_y180[4]*r_local[5] + rot_y180[5]*r_local[8],
+        rot_y180[6]*r_local[0] + rot_y180[7]*r_local[3] + rot_y180[8]*r_local[6],
+        rot_y180[6]*r_local[1] + rot_y180[7]*r_local[4] + rot_y180[8]*r_local[7],
+        rot_y180[6]*r_local[2] + rot_y180[7]*r_local[5] + rot_y180[8]*r_local[8],
+    )
+    # Desired joint-local axis = -X (thumb flex). World axis as Fusion
+    # returns it = R_child_world * axis_local.
+    axis_local = (-1.0, 0.0, 0.0)
+    axis_world = _rotate_vec3_by_mat3(axis_local, r_child_world)
+
+    snap = FusionSnapshot(design_name="bot", design_name_clean="bot")
+    snap.occurrences = {
+        "right_arm v1:1": FusionOccurrence(
+            full_path="right_arm v1:1", clean_name="right_arm",
+            path_segments=["right_arm"], depth=0, is_subassembly=True,
+            local_transform=Transform3D(rotation=rot_y180),
+            transform2=Transform3D(rotation=rot_y180),
+        ),
+        "right_arm v1:1+palm v1:1": FusionOccurrence(
+            full_path="right_arm v1:1+palm v1:1", clean_name="palm",
+            path_segments=["right_arm", "palm"], depth=1,
+            mass_kg=1.0, body_count=1,
+            global_position=(0.0, 0.0, 0.0),
+            transform2=Transform3D(rotation=rot_y180),
+            local_transform=Transform3D(),
+        ),
+        "right_arm v1:1+thumb v1:1": FusionOccurrence(
+            full_path="right_arm v1:1+thumb v1:1", clean_name="thumb",
+            path_segments=["right_arm", "thumb"], depth=1,
+            mass_kg=0.1, body_count=1,
+            global_position=(0.0, 0.05, 0.0),
+            transform2=Transform3D(
+                translation=(0.0, 0.05, 0.0), rotation=r_child_world
+            ),
+            local_transform=Transform3D(),
+        ),
+    }
+    snap.joints = {
+        "thumb_mip": FusionJoint(
+            name="thumb_mip", defining_component="right_arm",
+            motion_type="revolute",
+            occurrence_one_path="thumb v1:1", occurrence_one_clean="thumb",
+            occurrence_two_path="palm v1:1", occurrence_two_clean="palm",
+            origin_global_m=(0.0, 0.05, 0.0),
+            origin_source="occ_one_global",
+            axis_vector=axis_world,
+            has_rotation_limits=True,
+            rotation_min=0.0, rotation_max=1.0,
+        ),
+    }
+    model = build_model(snap, _make_logger())
+    j = model.joints["thumb_mip"]
+    for i, expected in enumerate(axis_local):
+        assert abs(j.axis[i] - expected) < 1e-6, (
+            f"mirrored thumb axis[{i}]={j.axis[i]}, expected {expected} "
+            f"(full axis={j.axis}). Double-applying R_arm would skew this."
+        )
+    print(" mirrored_subasm_axis_not_double_rotated: PASS")
+
+
+def test_mirrored_subasm_joint_origin_uses_occurrence_local_geometry():
+    """Nested joints must lift geometryOrOriginOne through the *child
+    occurrence* world pose, not through the defining assembly frame.
+
+    Harper-style failure mode: a right arm mounted with a large rotation
+    (mirror) stores ``geometry.origin`` near the assembly origin while
+    ``geometryOrOriginOne`` is (0,0,0) in the child link's local frame
+    (joint coincides with the component origin). Lifting
+    ``geometry.origin`` via ``R_asm * p + t_asm`` puts the URDF pivot at
+    the assembly origin and produces metre-scale mesh bake offsets - 
+    parts orbit far from the real joint when moved in RViz.
+
+    With the Autodesk-recommended lift (occ1 local -> child world pose),
+    bake stays ~0 and the joint origin sits on the child.
+    """
+    import math
+    from ..core.data_types import (
+        FusionSnapshot, FusionOccurrence, FusionJoint, Transform3D,
+    )
+    from ..core.robot_model import build_model
+
+    # Mount rotation ~ Harper right arm: 180 deg roll + 90 deg yaw
+    roll = math.pi
+    yaw = math.pi / 2
+    cr, sr = math.cos(roll), math.sin(roll)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    # R = Rz(yaw) * Rx(roll)
+    Rx = (1.0, 0.0, 0.0,
+          0.0, cr, -sr,
+          0.0, sr, cr)
+    Rz = (cy, -sy, 0.0,
+          sy, cy, 0.0,
+          0.0, 0.0, 1.0)
+    # row-major multiply Rz * Rx
+    def mm(a, b):
+        return (
+            a[0]*b[0] + a[1]*b[3] + a[2]*b[6],
+            a[0]*b[1] + a[1]*b[4] + a[2]*b[7],
+            a[0]*b[2] + a[1]*b[5] + a[2]*b[8],
+            a[3]*b[0] + a[4]*b[3] + a[5]*b[6],
+            a[3]*b[1] + a[4]*b[4] + a[5]*b[7],
+            a[3]*b[2] + a[4]*b[5] + a[5]*b[8],
+            a[6]*b[0] + a[7]*b[3] + a[8]*b[6],
+            a[6]*b[1] + a[7]*b[4] + a[8]*b[7],
+            a[6]*b[2] + a[7]*b[5] + a[8]*b[8],
+        )
+    R_arm = mm(Rz, Rx)
+    t_arm = (0.012, 0.021, 0.010)
+
+    # Child sits 0.45 m along the arm's local +X (finger-ish offset).
+    child_local = (0.45, 0.05, 0.02)
+    child_world = (
+        R_arm[0]*child_local[0] + R_arm[1]*child_local[1] + R_arm[2]*child_local[2] + t_arm[0],
+        R_arm[3]*child_local[0] + R_arm[4]*child_local[1] + R_arm[5]*child_local[2] + t_arm[1],
+        R_arm[6]*child_local[0] + R_arm[7]*child_local[1] + R_arm[8]*child_local[2] + t_arm[2],
+    )
+    parent_local = (0.10, 0.0, 0.0)
+    parent_world = (
+        R_arm[0]*parent_local[0] + R_arm[1]*parent_local[1] + R_arm[2]*parent_local[2] + t_arm[0],
+        R_arm[3]*parent_local[0] + R_arm[4]*parent_local[1] + R_arm[5]*parent_local[2] + t_arm[1],
+        R_arm[6]*parent_local[0] + R_arm[7]*parent_local[1] + R_arm[8]*parent_local[2] + t_arm[2],
+    )
+
+    arm = "right_arm v1:1"
+    parent = f"{arm}+proximal v1:1"
+    child = f"{arm}+distal v1:1"
+
+    snap = FusionSnapshot(design_name="harper", design_name_clean="harper")
+    snap.occurrences = {
+        arm: FusionOccurrence(
+            full_path=arm, clean_name="right_arm",
+            path_segments=["right_arm"], depth=0, is_subassembly=True,
+            global_position=t_arm,
+            transform2=Transform3D(translation=t_arm, rotation=R_arm),
+            local_transform=Transform3D(translation=t_arm, rotation=R_arm),
+        ),
+        parent: FusionOccurrence(
+            full_path=parent, clean_name="proximal",
+            path_segments=["right_arm", "proximal"], depth=1,
+            mass_kg=1.0, body_count=1,
+            global_position=parent_world,
+            transform2=Transform3D(translation=parent_world, rotation=R_arm),
+            local_transform=Transform3D(translation=parent_local),
+        ),
+        child: FusionOccurrence(
+            full_path=child, clean_name="distal",
+            path_segments=["right_arm", "distal"], depth=1,
+            mass_kg=0.5, body_count=1,
+            global_position=child_world,
+            transform2=Transform3D(translation=child_world, rotation=R_arm),
+            local_transform=Transform3D(translation=child_local),
+        ),
+    }
+    snap.joints = {
+        "finger_joint": FusionJoint(
+            name="finger_joint",
+            defining_component="right_arm",
+            motion_type="revolute",
+            occurrence_one_path="distal v1:1",
+            occurrence_one_clean="distal",
+            occurrence_two_path="proximal v1:1",
+            occurrence_two_clean="proximal",
+            # Misleading assembly-local origin at the sub-asm origin - 
+            # the old lift path would put the pivot at t_arm.
+            geometry_origin_cm=(0.0, 0.0, 0.0),
+            origin_global_m=(0.0, 0.0, 0.0),
+            origin_source="geometry.origin",
+            # Truth: joint coincides with the child component origin.
+            geometry_or_origin_one_cm=(0.0, 0.0, 0.0),
+            geometry_or_origin_two_cm=(35.0, 5.0, 2.0), # cm, unused when occ1 present
+            axis_vector=(0.0, 0.0, 1.0),
+            has_rotation_limits=True,
+            rotation_min=-1.0,
+            rotation_max=1.0,
+        ),
+    }
+
+    model = build_model(snap, _make_logger())
+    assert "finger_joint" in model.joints
+    joint = model.joints["finger_joint"]
+    distal = model.links["distal"]
+
+    # Joint world pivot must be the child occurrence origin, not t_arm.
+    assert abs(joint.origin_global[0] - child_world[0]) < 1e-6
+    assert abs(joint.origin_global[1] - child_world[1]) < 1e-6
+    assert abs(joint.origin_global[2] - child_world[2]) < 1e-6
+
+    # No metre-scale bake - child origin == joint pivot.
+    assert not distal.needs_mesh_bake, (
+        f"expected no mesh bake when joint is at child origin, got "
+        f"{distal.mesh_bake_offset}"
+    )
+    bake_mag = sum(c * c for c in distal.mesh_bake_offset) ** 0.5
+    assert bake_mag < 1e-6, f"bake magnitude {bake_mag} m should be ~0"
+
+    print(" mirrored_subasm_joint_origin_uses_occurrence_local_geometry: PASS")
+
+
+def test_world_proxied_joint_origin_not_double_lifted_and_bakes():
+    """Assembly-context proxy origins are already world-frame.
+
+    Harper nested arm joints need ``createForAssemblyContext`` so Fusion
+    exposes ``geometryOrOriginOne``. Those points arrive in root cm.
+    Phase 2 must use them as-is (no child-pose lift) and still mesh-bake
+    when the child component origin is far from the hinge.
+    """
+    from ..core.data_types import (
+        FusionSnapshot, FusionOccurrence, FusionJoint, Transform3D,
+    )
+    from ..core.robot_model import build_model
+
+    parent = "left_arm:1+left_wrs_upp_link:1"
+    child = "left_arm:1+left_wrs_low_link:1"
+    # Child component origin far from hinge (Harper-style).
+    child_world = (-0.1068, -0.0616, -0.1992)
+    # True hinge near the visual wrist (world metres).
+    hinge_world = (0.4687, -0.0941, -0.4007)
+    parent_world = (0.4687, -0.0941, -0.4007)
+
+    snap = FusionSnapshot(
+        design_name="harper",
+        design_name_clean="harper",
+        root_component_name="harper",
+        occurrences={
+            "base:1": FusionOccurrence(
+                full_path="base:1",
+                component_name="base",
+                clean_name="base",
+                path_segments=["base"],
+                depth=0,
+                global_position=(0.0, 0.0, 0.0),
+                local_transform=Transform3D(),
+                transform2=Transform3D(),
+                mass_kg=1.0,
+                body_count=1,
+            ),
+            parent: FusionOccurrence(
+                full_path=parent,
+                component_name="left_wrs_upp_link",
+                clean_name="left_wrs_upp_link",
+                path_segments=["left_arm", "left_wrs_upp_link"],
+                depth=1,
+                global_position=parent_world,
+                local_transform=Transform3D(),
+                transform2=Transform3D(),
+                mass_kg=0.4,
+                body_count=1,
+            ),
+            child: FusionOccurrence(
+                full_path=child,
+                component_name="left_wrs_low_link",
+                clean_name="left_wrs_low_link",
+                path_segments=["left_arm", "left_wrs_low_link"],
+                depth=1,
+                global_position=child_world,
+                local_transform=Transform3D(),
+                transform2=Transform3D(),
+                mass_kg=0.014,
+                body_count=1,
+                # CoM far from component origin - geometry near hinge.
+                com_component_local=(
+                    hinge_world[0] - child_world[0],
+                    hinge_world[1] - child_world[1],
+                    hinge_world[2] - child_world[2],
+                ),
+            ),
+        },
+        joints={
+            "mount": FusionJoint(
+                name="mount",
+                joint_source="regular",
+                defining_component="harper",
+                occurrence_one_path=parent,
+                occurrence_two_path="base:1",
+                occurrence_one_clean="left_wrs_upp_link",
+                occurrence_two_clean="base",
+                origin_global_m=parent_world,
+                origin_source="geometryOrOriginOne",
+                motion_type="rigid",
+            ),
+            "left_wrs_fex_joint": FusionJoint(
+                name="left_wrs_fex_joint",
+                joint_source="regular",
+                defining_component="left_arm",
+                occurrence_one_path=child,
+                occurrence_two_path=parent,
+                occurrence_one_clean="left_wrs_low_link",
+                occurrence_two_clean="left_wrs_upp_link",
+                # Stored as world cm by Phase-1 proxy path, converted to m.
+                geometry_or_origin_one_cm=(
+                    hinge_world[0] * 100.0,
+                    hinge_world[1] * 100.0,
+                    hinge_world[2] * 100.0,
+                ),
+                origin_global_m=hinge_world,
+                origin_source="geometryOrOriginOne_world",
+                origin_is_world=True,
+                motion_type="revolute",
+                axis_vector=(0.0, -1.0, 0.0),
+                has_rotation_limits=True,
+                rotation_min=-1.2,
+                rotation_max=1.5,
+            ),
+        },
+        total_joints=2,
+        total_regular_joints=2,
+    )
+    model = build_model(snap, _make_logger())
+    j = model.joints["left_wrs_fex_joint"]
+    child_link = model.links["left_wrs_low_link"]
+
+    # Joint origin relative to parent ~ 0 (hinge ~ parent pose here).
+    assert abs(j.origin_xyz[0]) < 1e-6
+    assert abs(j.origin_xyz[1]) < 1e-6
+    assert abs(j.origin_xyz[2]) < 1e-6
+
+    # Bake must pull the mesh from the distant component origin onto the hinge.
+    assert child_link.needs_mesh_bake, (
+        f"expected mesh bake for offset child origin, got "
+        f"{child_link.mesh_bake_offset}"
+    )
+    bake = child_link.mesh_bake_offset
+    # bake_world = child_world - hinge_world; identity rotation -> same local.
+    expected = (
+        child_world[0] - hinge_world[0],
+        child_world[1] - hinge_world[1],
+        child_world[2] - hinge_world[2],
+    )
+    for i in range(3):
+        assert abs(bake[i] - expected[i]) < 1e-6, (
+            f"bake[{i}]={bake[i]}, expected {expected[i]}"
+        )
+    print(" world_proxied_joint_origin_not_double_lifted_and_bakes: PASS")
+
+
+def test_occ_one_global_prefers_transform2_over_buggy_walk():
+    """When geometry origins are missing, Phase 1 may store a wrong
+    ``occ_one_global`` from the translation-only assemblyContext walk.
+    Phase 2 must use the child occurrence's transform2-backed
+    ``global_position`` instead - otherwise mirrored nested arms get
+    metre-scale bake offsets (Harper: fine at Center, broken on Randomize).
+    """
+    import math
+    from ..core.data_types import (
+        FusionSnapshot, FusionOccurrence, FusionJoint, Transform3D,
+    )
+    from ..core.robot_model import build_model
+
+    roll = math.pi
+    cr, sr = math.cos(roll), math.sin(roll)
+    R = (1.0, 0.0, 0.0,
+         0.0, cr, -sr,
+         0.0, sr, cr)
+    # Child true world pose (transform2)
+    child_world = (-0.03, -0.06, -0.08)
+    # Buggy walk value stored as origin_global_m (Harper-like)
+    buggy_joint = (0.63, -0.06, 0.08)
+    parent_world = (0.05, -0.06, -0.08)
+
+    arm = "right_arm v1:1"
+    parent = f"{arm}+proximal v1:1"
+    child = f"{arm}+distal v1:1"
+
+    snap = FusionSnapshot(design_name="harper", design_name_clean="harper")
+    snap.occurrences = {
+        arm: FusionOccurrence(
+            full_path=arm, clean_name="right_arm",
+            path_segments=["right_arm"], depth=0, is_subassembly=True,
+            global_position=(0.01, 0.02, 0.01),
+            transform2=Transform3D(translation=(0.01, 0.02, 0.01), rotation=R),
+        ),
+        parent: FusionOccurrence(
+            full_path=parent, clean_name="proximal",
+            path_segments=["right_arm", "proximal"], depth=1,
+            mass_kg=1.0, body_count=1,
+            global_position=parent_world,
+            transform2=Transform3D(translation=parent_world, rotation=R),
+        ),
+        child: FusionOccurrence(
+            full_path=child, clean_name="distal",
+            path_segments=["right_arm", "distal"], depth=1,
+            mass_kg=0.5, body_count=1,
+            global_position=child_world,
+            transform2=Transform3D(translation=child_world, rotation=R),
+        ),
+    }
+    snap.joints = {
+        "j": FusionJoint(
+            name="j",
+            defining_component="right_arm",
+            motion_type="revolute",
+            occurrence_one_path="distal v1:1",
+            occurrence_one_clean="distal",
+            occurrence_two_path="proximal v1:1",
+            occurrence_two_clean="proximal",
+            origin_global_m=buggy_joint,
+            origin_source="occ_one_global",
+            axis_vector=(0.0, 0.0, 1.0),
+            has_rotation_limits=True,
+            rotation_min=-1.0,
+            rotation_max=1.0,
+        ),
+    }
+
+    model = build_model(snap, _make_logger())
+    joint = model.joints["j"]
+    distal = model.links["distal"]
+
+    assert abs(joint.origin_global[0] - child_world[0]) < 1e-6
+    assert abs(joint.origin_global[1] - child_world[1]) < 1e-6
+    assert abs(joint.origin_global[2] - child_world[2]) < 1e-6
+    assert not distal.needs_mesh_bake, (
+        f"expected no bake when joint uses child transform2, got "
+        f"{distal.mesh_bake_offset}"
+    )
+    print(" occ_one_global_prefers_transform2_over_buggy_walk: PASS")
 
 
 def test_assembly_links_list_no_clean_name_duplicates():
@@ -2343,6 +2794,10 @@ def run_all():
     test_internal_rigid_group_rigid_joints_are_quietly_dropped()
     test_nested_subasm_link_origin_invariant_under_parent_rotation()
     test_nested_subasm_joint_axis_invariant_under_parent_rotation()
+    test_mirrored_subasm_axis_not_double_rotated()
+    test_mirrored_subasm_joint_origin_uses_occurrence_local_geometry()
+    test_world_proxied_joint_origin_not_double_lifted_and_bakes()
+    test_occ_one_global_prefers_transform2_over_buggy_walk()
     test_passive_joint_propagates_flag()
     test_link_properties_preserved()
     test_rigid_group_merge_two_members()

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Check — Validate a Fusion snapshot and report kinematic chain issues.
 
 Builds the RobotModel from snapshot.json, runs validation, and prints
@@ -64,13 +64,20 @@ def _snapshot_from_dict(data: dict) -> FusionSnapshot:
     )
 
     for path, od in data.get('occurrences', {}).items():
-        t_data = od.get('local_transform', {})
-        t_trans = t_data.get('translation', [0, 0, 0])
-        t_rot = t_data.get('rotation', [1, 0, 0, 0, 1, 0, 0, 0, 1])
-        if t_rot and isinstance(t_rot[0], list):
-            t_rot = tuple(v for row in t_rot for v in row)
-        else:
-            t_rot = tuple(t_rot) if t_rot else (1, 0, 0, 0, 1, 0, 0, 0, 1)
+        def _parse_tf(tdata):
+            if not tdata:
+                return Transform3D()
+            t_trans = tdata.get('translation', [0, 0, 0])
+            t_rot = tdata.get('rotation', [1, 0, 0, 0, 1, 0, 0, 0, 1])
+            if t_rot and isinstance(t_rot[0], list):
+                t_rot = tuple(v for row in t_rot for v in row)
+            else:
+                t_rot = tuple(t_rot) if t_rot else (1, 0, 0, 0, 1, 0, 0, 0, 1)
+            return Transform3D(translation=tuple(t_trans), rotation=t_rot)
+
+        local_tf = _parse_tf(od.get('local_transform', {}))
+        t2 = od.get('transform2')
+        transform2 = _parse_tf(t2) if t2 else None
 
         i_com = od.get('inertia_at_com', {})
         i_orig = od.get('inertia_at_origin', {})
@@ -83,7 +90,8 @@ def _snapshot_from_dict(data: dict) -> FusionSnapshot:
             depth=od.get('depth', 0),
             is_subassembly=od.get('is_subassembly', False),
             global_position=tuple(od.get('global_position', [0, 0, 0])),
-            local_transform=Transform3D(translation=tuple(t_trans), rotation=t_rot),
+            local_transform=local_tf,
+            transform2=transform2,
             assembly_context_depth=od.get('assembly_context_depth', 0),
             mass_kg=od.get('mass_kg', 0),
             body_count=od.get('body_count', 0),
@@ -101,6 +109,10 @@ def _snapshot_from_dict(data: dict) -> FusionSnapshot:
         snap.occurrences[path] = occ
 
     for jname, jd in data.get('joints', {}).items():
+        def _opt_vec(key):
+            v = jd.get(key)
+            return tuple(v) if v else None
+
         joint = FusionJoint(
             name=jd.get('name', jname),
             joint_source=jd.get('joint_source', ''),
@@ -110,6 +122,12 @@ def _snapshot_from_dict(data: dict) -> FusionSnapshot:
             occurrence_one_clean=jd.get('occurrence_one_clean', ''),
             occurrence_two_path=jd.get('occurrence_two_path', ''),
             occurrence_two_clean=jd.get('occurrence_two_clean', ''),
+            geometry_origin_cm=_opt_vec('geometry_origin_cm'),
+            geometry_or_origin_one_cm=_opt_vec('geometry_or_origin_one_cm'),
+            geometry_or_origin_two_cm=_opt_vec('geometry_or_origin_two_cm'),
+            occ_one_transform_cm=_opt_vec('occ_one_transform_cm'),
+            occ_one_transform2_cm=_opt_vec('occ_one_transform2_cm'),
+            occ_one_global_cm=_opt_vec('occ_one_global_cm'),
             origin_global_m=tuple(jd.get('origin_global_m', [0, 0, 0])),
             origin_source=jd.get('origin_source', ''),
             axis_vector=tuple(jd.get('axis_vector', [0, 0, 1])),
