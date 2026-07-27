@@ -26,7 +26,7 @@ from .data_types import (
     InertiaTensor, Vec3, RPY, RigidGroupInfo,
     DESIGN_ROOT_OCCURRENCE_PATH,
 )
-from ..utils import Logger, clean_name
+from ..utils import Logger, clean_name, cm_to_m
 
 
 # ──────────────────────────────────────────────
@@ -2120,25 +2120,47 @@ def _build_joints(
                 f"({before[0]:.6f}, {before[1]:.6f}, {before[2]:.6f}) → "
                 f"({origin_xyz[0]:.6f}, {origin_xyz[1]:.6f}, {origin_xyz[2]:.6f}) m")
 
-        # Joint axis — Fusion's ``rotationAxisVector`` is documented as
-        # "world space" but empirically it's in the JOINT'S DEFINING
-        # COMPONENT'S frame (same as the origin source — the gripper's
-        # joint axes came out wrong when the gripper sub-asm was
-        # mounted into Assem1 with a non-identity rotation).  Lift to
-        # true world frame by rotating through the defining assembly's
-        # ``global_rotation`` (no-op when the joint is defined in the
-        # design root — global_rotation is identity there), THEN rotate
-        # into the joint's local frame with R_child_worldᵀ.
+        # Joint axis - Fusion's ``rotationAxisVector`` /
+        # ``slideDirectionVector`` are in the *root component* (design /
+        # world) context. Autodesk documents this, and Harper's mirrored
+        # right arm confirms it: extracted axes are world-tilted, and
+        # ``R_child^T * axis_world`` recovers clean +/-X/Y/Z in the joint
+        # frame.
+        #
+        # An earlier revision treated the vector as defining-component
+        # local and pre-multiplied ``assemblies[defining].global_rotation``.
+        # That DOUBLE-applied the sub-asm pose on mirrored mounts (right
+        # arm 180 deg about Y) and left thumb/finger axes skewed in the URDF
+        # even though the main arm joints looked fine (identity left_arm
+        # made the extra lift a no-op there).
+        #
+        # URDF ``<axis>`` is in the joint frame (= child link at theta = 0):
+        # axis_urdf = R_child_world^T * axis_world
         if urdf_type in ("revolute", "prismatic", "continuous"):
-            axis_in_defining = fj.axis_vector
-            defining = edge.defining_component
-            if (defining and defining in assemblies
-                    and defining != snapshot.design_name_clean):
-                R_defining_world = assemblies[defining].global_rotation
-                axis_world = _rotate_vec3_by_mat3(axis_in_defining, R_defining_world)
-            else:
-                axis_world = axis_in_defining
-            axis_local = _rotate_vec3_by_mat3(axis_world, _mat3_transpose(r_child_world))
+            axis_world = fj.axis_vector
+            axis_local = _rotate_vec3_by_mat3(
+                axis_world, _mat3_transpose(r_child_world)
+            )
+            # Normalize - Fusion vectors are unit, but mirrored remaps can
+            # drift by ~1e-15 and consumers expect ||axis|| = 1.
+            axis_norm = math.sqrt(
+                axis_local[0] ** 2 + axis_local[1] ** 2 + axis_local[2] ** 2
+            )
+            if axis_norm > 1e-12:
+                axis_local = (
+                    axis_local[0] / axis_norm,
+                    axis_local[1] / axis_norm,
+                    axis_local[2] / axis_norm,
+                )
+            if any(
+                abs(axis_local[i] - axis_world[i]) > 1e-6 for i in range(3)
+            ):
+                log(
+                    f" {edge.joint_name}: axis remapped world -> joint/child "
+                    f"frame: ({axis_world[0]:.3f}, {axis_world[1]:.3f}, "
+                    f"{axis_world[2]:.3f}) -> ({axis_local[0]:.3f}, "
+                    f"{axis_local[1]:.3f}, {axis_local[2]:.3f})"
+                )
         else:
             axis_local = fj.axis_vector
 
@@ -2186,6 +2208,47 @@ def _build_joints(
     log(f"  Built {len(model.joints)} joints")
 
 
+def _occurrence_world_pose(
+    occ_path: str, snapshot: FusionSnapshot
+) -> Optional[Tuple[Tuple[float, ...], Vec3]]:
+    """Return ``(R_world, t_world)`` for an occurrence, or None if missing."""
+    if not occ_path:
+        return None
+    occ = snapshot.occurrences.get(occ_path)
+    if occ is None:
+        return None
+    R = _global_rotation_for_occurrence(occ_path, snapshot)
+    t = occ.global_position
+    return R, t
+
+
+def _lift_point_by_occurrence(
+    local_cm: Optional[Vec3],
+    occ_path: str,
+    snapshot: FusionSnapshot,
+) -> Optional[Vec3]:
+    """Lift a point from an occurrence's local frame into world meters.
+
+    Autodesk's documented approach for joint world coordinates:
+    ``geometryOrOriginOne/Two.origin`` lives in that occurrence's
+    component-local frame; multiply by the occurrence's full root
+    transform (``transform2`` / ``global_position``) to get world.
+
+    Using the *defining assembly* frame instead - the previous
+    behaviour - mis-places pivots inside nested / mirrored sub-asms
+    (e.g. a right arm mounted with 180 deg roll) and produces metre-scale
+    mesh bake offsets that explode the robot when joints move.
+    """
+    if local_cm is None:
+        return None
+    pose = _occurrence_world_pose(occ_path, snapshot)
+    if pose is None:
+        return None
+    R, t = pose
+    local_m = (cm_to_m(local_cm[0]), cm_to_m(local_cm[1]), cm_to_m(local_cm[2]))
+    return _vec_add(_rotate_vec3_by_mat3(local_m, R), t)
+
+
 def _compute_joint_global_origin(
     fj: FusionJoint,
     edge: KinematicEdge,
@@ -2193,19 +2256,59 @@ def _compute_joint_global_origin(
     snapshot: FusionSnapshot,
 ) -> Vec3:
     """
-    Compute joint origin in global coordinates.
-    
-    geometry.origin and geometryOrOriginOne are in the DEFINING COMPONENT's
-    local frame. For joints defined inside sub-assemblies, we add the
-    assembly's global offset.
-    
-    Fallback sources (occ_one_global) are already global.
+    Compute joint origin in global (root) coordinates.
+
+    Preference order (Autodesk + nested/mirrored assembly practice):
+
+      0. World-proxied geometry (``origin_is_world`` / ``*_world`` source)
+          - already root-frame from ``createForAssemblyContext``
+      1. geometryOrOriginOne x child occurrence world pose
+      2. geometryOrOriginTwo x parent occurrence world pose
+      3. geometry.origin lifted through the defining sub-assembly pose
+         (legacy path - assembly-local coordinates only)
+      4. ``fj.origin_global_m`` as already stored (occ_one_global etc.)
+
+    (1) is required for designs like Harper's mirrored right arm: an
+    assembly-local ``geometry.origin`` of (0,0,0) lifts to the sub-asm
+    origin and creates metre-scale mesh bake offsets, while
+    ``geometryOrOriginOne`` of (0,0,0) correctly means "joint at the
+    child component origin."
     """
+    # 0) Assembly-context proxy already returned root/world coordinates.
+    # Re-lifting through the child pose would double-apply the sub-asm
+    # transform and put pivots metres away from the hinge.
+    if fj.origin_is_world or str(fj.origin_source).endswith("_world"):
+        return fj.origin_global_m
+
+    # 1) Child-side joint geometry in the child occurrence's local frame.
+    world = _lift_point_by_occurrence(
+        fj.geometry_or_origin_one_cm, edge.child_path, snapshot
+    )
+    if world is not None:
+        return world
+
+    # 2) Parent-side joint geometry in the parent occurrence's local frame.
+    world = _lift_point_by_occurrence(
+        fj.geometry_or_origin_two_cm, edge.parent_path, snapshot
+    )
+    if world is not None:
+        return world
+
     defining = edge.defining_component
     source = fj.origin_source
     raw_origin = fj.origin_global_m  # Already converted to meters in Phase 1
 
-    # Check if origin is assembly-local (from geometry methods)
+    # 3) Occurrence-global fallbacks from Phase 1. Older snapshots used a
+    # translation-only assemblyContext walk for ``occ_one_global``, which
+    # disagrees with transform2 on mirrored nested arms (Harper right arm:
+    # joint at +0.63 m vs child at -0.03 m -> 0.6 m bake). Always prefer
+    # the child occurrence's transform2-backed ``global_position``.
+    if source in ("occ_one_global", "occ_one_transform", "occ_one_transform2"):
+        pose = _occurrence_world_pose(edge.child_path, snapshot)
+        if pose is not None:
+            return pose[1]
+
+    # 4) Legacy: geometry.origin treated as defining-assembly local.
     needs_offset = (
         source in ("geometry.origin", "geometryOrOriginOne", "geometryOrOriginTwo")
         and defining in assemblies
@@ -2214,22 +2317,14 @@ def _compute_joint_global_origin(
 
     if needs_offset:
         # Lift the joint origin from the defining sub-asm's local frame
-        # into world frame.  Earlier this was a translation-only
-        # ``_vec_add(raw_origin, asm_offset)`` which silently dropped
-        # the sub-asm's rotation — fine when the sub-asm sat at world
-        # identity but wrong otherwise (visible on the gripper-on-arm
-        # mount where the gripper sub-asm carries the mount joint's
-        # rotation).  Use the full rigid transform: world = R_asm ·
-        # raw + t_asm.
+        # into world frame. Use the full rigid transform:
+        # world = R_asm * raw + t_asm.
         R_asm = assemblies[defining].global_rotation
         t_asm = assemblies[defining].global_offset
         rotated = _rotate_vec3_by_mat3(raw_origin, R_asm)
         return _vec_add(rotated, t_asm)
 
-    # occ_one_global / occ_one_transform are already global (via assemblyContext)
-    # But occ_one_transform might be local if context_depth==0 for nested joints
-    # occ_one_global should be reliable — it walks assemblyContext chain
-
+    # 5) Root-local geometry.origin / other already-world sources.
     return raw_origin
 
 

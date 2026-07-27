@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple, Any
 # Version
 # ──────────────────────────────────────────────
 
-EXPORTER_VERSION = "3.0.0"
+EXPORTER_VERSION = "3.0.1"
 DESIGN_ROOT_OCCURRENCE_PATH = "__design_root__"
 
 
@@ -227,6 +227,11 @@ class FusionJoint:
     # Phase 1 picks the best available method and converts to meters
     origin_global_m: Vec3 = (0.0, 0.0, 0.0)
     origin_source: str = ""         # Which method gave us the origin
+    # True when origin_global_m / geometry_or_origin_* were read from a
+    # joint proxy created via createForAssemblyContext - Autodesk returns
+    # those points already in root/world coordinates, so Phase 2 must NOT
+    # lift them again through the child occurrence pose.
+    origin_is_world: bool = False
     
     # ── Motion ──
     motion_type: str = ""           # "rigid", "revolute", "slider", "cylindrical", "pin_slot", "planar", "ball"
