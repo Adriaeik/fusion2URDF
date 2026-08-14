@@ -1,4 +1,4 @@
-﻿"""
+"""
 Check — Validate a Fusion snapshot and report kinematic chain issues.
 
 Builds the RobotModel from snapshot.json, runs validation, and prints

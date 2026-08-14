@@ -41,6 +41,13 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Generated exports, debug data, Python caches, and local test scratch remain
   ignored; the curated source designs and examples stay tracked.
 
+## [3.0.1] - 2026-07-22
+
+- Proxy nested joints with `createForAssemblyContext` so geometry origins resolve.
+- Lift occurrence-local joint origins through the child/parent world pose; do not double-lift world-proxied origins.
+- Remap revolute/prismatic axes as `R_child^T * axis_world` (no defining-assembly pre-multiply).
+- Prefer occurrence `transform2` over the assemblyContext walk for origin fallbacks.
+
 ## [3.0.0] — 2026-05-04
 
 Initial public release.

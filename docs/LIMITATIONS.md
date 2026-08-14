@@ -16,6 +16,14 @@ If a component origin is wrong but the geometry is otherwise good, add a
 merged link frame and does not export as geometry. This is the preferred fix
 for base frames, wheel centers, sensor frames, mount frames, and tool frames.
 
+Nested regular joints (joints defined inside a subassembly such as an arm)
+often return null `geometry` / `geometryOrOriginOne` until the exporter
+proxies them with `createForAssemblyContext`. Exporter v3.0.1+ does this
+automatically so mesh bake can place the URDF link frame on the real hinge.
+If a movable joint still logs a fallback to `occ_one_transform2`, add a
+`!frame_*` at that hinge or recreate the joint so Fusion exposes a joint
+origin.
+
 Orientation cleanup no longer requires rebuilding the assembly. The default
 post-export ROS convention keeps the Fusion design-world root `X` forward and
 `Z` up and rebases revolute/continuous child frames to local `+Z`. A verbose

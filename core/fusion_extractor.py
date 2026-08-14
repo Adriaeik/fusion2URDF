@@ -1,4 +1,4 @@
-﻿"""
+"""
 Fusion Extractor — Extract everything from Fusion 360 into Python dataclasses.
 
 This is the ONLY module that imports adsk.* — all downstream processing
@@ -683,6 +683,120 @@ def _extract_color(appearance):
 # Joint extraction
 # ──────────────────────────────────────────────
 
+# ──────────────────────────────────────────────
+# Joint geometry origin helpers
+# ──────────────────────────────────────────────
+
+def _read_joint_geo_origin_cm(geo, log: Logger = None, context: str = ""):
+    """
+    Read an origin Point3D from Fusion JointGeometry or JointOrigin.
+
+    Nested / regular joints often expose a JointOrigin whose useful point
+    lives on ``.origin``, ``.geometry.origin``, or ``.transform.translation``.
+    Silent AttributeError / RuntimeError used to leave every nested Harper
+    arm joint with a null geometry origin and fall back to the child
+    component pose - bake never fired and links orbited the wrong point.
+    """
+    if geo is None:
+        return None
+
+    where = f"{context}: " if context else ""
+
+    # 1) Direct .origin (JointGeometry and JointOrigin)
+    try:
+        o = getattr(geo, "origin", None)
+        if o is not None:
+            return (float(o.x), float(o.y), float(o.z))
+    except Exception as exc:
+        if log:
+            log.warning(f" {where}failed to read .origin: {exc}")
+
+    # 2) JointOrigin.geometry.origin
+    try:
+        inner = getattr(geo, "geometry", None)
+        if inner is not None:
+            o = getattr(inner, "origin", None)
+            if o is not None:
+                return (float(o.x), float(o.y), float(o.z))
+    except Exception as exc:
+        if log:
+            log.warning(f" {where}failed to read .geometry.origin: {exc}")
+
+    # 3) transform.translation fallback
+    try:
+        xf = getattr(geo, "transform", None)
+        if xf is not None:
+            t = xf.translation
+            return (float(t.x), float(t.y), float(t.z))
+    except Exception as exc:
+        if log:
+            log.warning(f" {where}failed to read .transform.translation: {exc}")
+
+    return None
+
+
+def _proxy_joint_for_assembly_context(
+    joint,
+    defining_comp,
+    root_component,
+    log: Logger,
+    context: str = "",
+):
+    """
+    Return ``(joint_or_proxy, used_proxy)``.
+
+    Joints owned by a nested component (e.g. ``left_arm``) often return
+    null ``geometry`` / ``geometryOrOriginOne`` until proxied into an
+    occurrence via ``createForAssemblyContext``. Autodesk then reports the
+    origin in root/world coordinates.
+    """
+    if joint is None or defining_comp is None or root_component is None:
+        return joint, False
+
+    # Joint already lives on the design root - no proxy needed.
+    try:
+        if defining_comp == root_component:
+            return joint, False
+    except Exception:
+        pass
+
+    where = f"{context}: " if context else ""
+    try:
+        occs = root_component.allOccurrencesByComponent(defining_comp)
+    except Exception as exc:
+        if log:
+            log.warning(
+                f" {where}allOccurrencesByComponent failed: {exc}"
+            )
+        return joint, False
+
+    if not occs or getattr(occs, "count", 0) == 0:
+        return joint, False
+
+    # Prefer the first occurrence; multi-instance designs may need a
+    # smarter match later (path prefix vs occurrenceOne).
+    try:
+        occ = occs.item(0)
+        proxy = joint.createForAssemblyContext(occ)
+        if proxy is not None:
+            if log:
+                occ_name = getattr(occ, "fullPathName", None) or getattr(
+                    occ, "name", "?"
+                )
+                log(
+                    f" {where}proxied joint into assembly context "
+                    f"'{occ_name}' for geometry origin"
+                )
+            return proxy, True
+    except Exception as exc:
+        if log:
+            log.warning(
+                f" {where}createForAssemblyContext failed: {exc}"
+            )
+
+    return joint, False
+
+
 def _extract_all_joints(design, snapshot: FusionSnapshot, log: Logger):
     """Collect all joints from all components — both regular and as-built."""
     
@@ -923,35 +1037,54 @@ def _extract_one_joint(
             return None
     
     # ── Geometry origins — extract ALL methods ──
-    
-    # geometry.origin
-    try:
-        if hasattr(joint, 'geometry') and joint.geometry:
-            if hasattr(joint.geometry, 'origin') and joint.geometry.origin:
-                o = joint.geometry.origin
-                fj.geometry_origin_cm = (o.x, o.y, o.z)
-    except Exception:
-        pass
-    
-    # geometryOrOriginOne
-    try:
-        if hasattr(joint, 'geometryOrOriginOne') and joint.geometryOrOriginOne:
-            geo = joint.geometryOrOriginOne
-            if hasattr(geo, 'origin') and geo.origin:
-                o = geo.origin
-                fj.geometry_or_origin_one_cm = (o.x, o.y, o.z)
-    except Exception:
-        pass
-    
-    # geometryOrOriginTwo
-    try:
-        if hasattr(joint, 'geometryOrOriginTwo') and joint.geometryOrOriginTwo:
-            geo = joint.geometryOrOriginTwo
-            if hasattr(geo, 'origin') and geo.origin:
-                o = geo.origin
-                fj.geometry_or_origin_two_cm = (o.x, o.y, o.z)
-    except Exception:
-        pass
+    # Nested regular joints (Harper arms) often return null geometry until
+    # the joint is proxied into an occurrence via createForAssemblyContext.
+    # Autodesk then reports origins in root/world coordinates.
+    geo_joint, used_proxy = _proxy_joint_for_assembly_context(
+        joint, defining_comp, root_component, log, context
+    )
+    fj.origin_is_world = bool(used_proxy)
+
+    fj.geometry_origin_cm = _read_joint_geo_origin_cm(
+        _safe_fusion_attr(geo_joint, "geometry", None, log, context),
+        log,
+        f"{context} geometry",
+    )
+    fj.geometry_or_origin_one_cm = _read_joint_geo_origin_cm(
+        _safe_fusion_attr(geo_joint, "geometryOrOriginOne", None, log, context),
+        log,
+        f"{context} geometryOrOriginOne",
+    )
+    fj.geometry_or_origin_two_cm = _read_joint_geo_origin_cm(
+        _safe_fusion_attr(geo_joint, "geometryOrOriginTwo", None, log, context),
+        log,
+        f"{context} geometryOrOriginTwo",
+    )
+
+    # If the native (non-proxy) joint had local-frame origins that the proxy
+    # missed, try the native joint as a fallback - but mark as not-world.
+    if (
+        fj.geometry_origin_cm is None
+        and fj.geometry_or_origin_one_cm is None
+        and fj.geometry_or_origin_two_cm is None
+        and geo_joint is not joint
+    ):
+        fj.origin_is_world = False
+        fj.geometry_origin_cm = _read_joint_geo_origin_cm(
+            _safe_fusion_attr(joint, "geometry", None, log, context),
+            log,
+            f"{context} geometry(native)",
+        )
+        fj.geometry_or_origin_one_cm = _read_joint_geo_origin_cm(
+            _safe_fusion_attr(joint, "geometryOrOriginOne", None, log, context),
+            log,
+            f"{context} geometryOrOriginOne(native)",
+        )
+        fj.geometry_or_origin_two_cm = _read_joint_geo_origin_cm(
+            _safe_fusion_attr(joint, "geometryOrOriginTwo", None, log, context),
+            log,
+            f"{context} geometryOrOriginTwo(native)",
+        )
     
     # occurrenceOne transform variants
     if occ_one:
@@ -969,8 +1102,15 @@ def _extract_one_joint(
         except Exception:
             pass
         
-        # Global via assemblyContext chain
-        fj.occ_one_global_cm, fj.occ_one_context_depth = _walk_assembly_context(occ_one)
+        # Global position: prefer transform2 (Fusion's composed world pose).
+        # The assemblyContext translation-only walk silently drops nested
+        # rotations - wrong for mirrored sub-asms (Harper right arm) and
+        # produces metre-scale mesh bake offsets when used as joint origin.
+        if fj.occ_one_transform2_cm is not None:
+            fj.occ_one_global_cm = fj.occ_one_transform2_cm
+            fj.occ_one_context_depth = _count_chain_depth(occ_one)
+        else:
+            fj.occ_one_global_cm, fj.occ_one_context_depth = _walk_assembly_context(occ_one)
     
     # occurrenceTwo transforms
     if occ_two:
@@ -980,14 +1120,40 @@ def _extract_one_joint(
                 fj.occ_two_transform_cm = (t.x, t.y, t.z)
         except Exception:
             pass
-        
-        fj.occ_two_global_cm, fj.occ_two_context_depth = _walk_assembly_context(occ_two)
+
+        try:
+            if hasattr(occ_two, 'transform2') and occ_two.transform2:
+                t = occ_two.transform2.translation
+                # Store via walk fallback path using transform2 when present
+                fj.occ_two_global_cm = (t.x, t.y, t.z)
+                fj.occ_two_context_depth = _count_chain_depth(occ_two)
+            else:
+                fj.occ_two_global_cm, fj.occ_two_context_depth = _walk_assembly_context(occ_two)
+        except Exception:
+            fj.occ_two_global_cm, fj.occ_two_context_depth = _walk_assembly_context(occ_two)
     
     # ── Pick best origin (global, meters) ──
     fj.origin_global_m, fj.origin_source = _pick_joint_origin(fj)
-    
+    if fj.origin_is_world and fj.origin_source in (
+        "geometry.origin",
+        "geometryOrOriginOne",
+        "geometryOrOriginTwo",
+    ):
+        fj.origin_source = f"{fj.origin_source}_world"
+
     # ── Motion type ──
     _extract_joint_motion(joint, fj)
+
+    if (
+        fj.origin_source in ("occ_one_transform2", "occ_one_global", "occ_one_transform", "none")
+        and fj.motion_type in ("revolute", "slider", "cylindrical", "pin_slot", "ball")
+    ):
+        log.warning(
+            f" {context} '{name}': no Fusion joint geometry origin - "
+            f"falling back to child component pose ({fj.origin_source}). "
+            f"Mesh bake cannot rebase this link; add a !frame_* at the hinge "
+            f"or recreate the joint so geometryOrOriginOne exports."
+        )
     
     # ── Log ──
     tag = source.upper()
@@ -1010,7 +1176,8 @@ def _extract_one_joint(
     if fj.occ_two_global_cm:
         log(f"    occ2.global:    ({fj.occ_two_global_cm[0]:.4f}, {fj.occ_two_global_cm[1]:.4f}, {fj.occ_two_global_cm[2]:.4f}) cm")
     
-    log(f"    → origin_global: ({fj.origin_global_m[0]:.6f}, {fj.origin_global_m[1]:.6f}, {fj.origin_global_m[2]:.6f}) m [via {fj.origin_source}]")
+    world_tag = " [world]" if fj.origin_is_world else ""
+    log(f" -> origin_global: ({fj.origin_global_m[0]:.6f}, {fj.origin_global_m[1]:.6f}, {fj.origin_global_m[2]:.6f}) m [via {fj.origin_source}]{world_tag}")
     log(f"    motion: {fj.motion_type}, axis: ({fj.axis_vector[0]:.3f}, {fj.axis_vector[1]:.3f}, {fj.axis_vector[2]:.3f})")
     
     if fj.has_rotation_limits:
@@ -1053,21 +1220,27 @@ def _walk_assembly_context(occ):
 
 def _pick_joint_origin(fj: FusionJoint):
     """
-    Pick the best available origin and convert to global meters.
-    
+    Pick the best available origin and convert to meters.
+
     Priority:
-      1. geometry.origin — most reliable (regular joints, some as-built)
-      2. geometryOrOriginOne.origin — fallback for regular joints
-      3. occ_one_global via assemblyContext chain — universal fallback
-      4. occ_one_transform — last resort
-    
-    Note: geometry.origin and geometryOrOriginOne.origin are in the
-    DEFINING COMPONENT's coordinate frame. For joints defined in the
-    root component, this IS global. For joints defined inside a
-    sub-assembly, the coordinates are assembly-local.
-    
-    We store the raw value here and let Phase 2 (robot_model) handle
-    the frame conversion once the assembly hierarchy is known.
+      1. geometry.origin - often available; treated as defining-assembly
+         local by Phase 2 when the joint is nested (legacy lift).
+      2. geometryOrOriginOne.origin - occurrenceOne-local; Phase 2 lifts
+         this through the child occurrence's world pose (preferred for
+         nested / mirrored sub-assemblies).
+      3. occ_one_transform2 - Fusion's composed world pose (preferred
+         over the translation-only assemblyContext walk)
+      4. occ_one_global via assemblyContext chain - last global fallback
+      5. occ_one_transform - last resort
+
+    Note: ``geometryOrOriginOne/Two.origin`` are in the *mated
+    occurrence's* component-local frame (Autodesk forum / API practice),
+    NOT the defining assembly frame. Phase 2
+    (``_compute_joint_global_origin``) therefore prefers lifting those
+    through the occurrence world pose. ``geometry.origin`` remains the
+    Phase-1 pick for backwards-compatible snapshots that lack the
+    per-side origin fields; Phase 2 still upgrades to occ1/occ2 when
+    those fields are present.
     """
     if fj.geometry_origin_cm:
         x, y, z = fj.geometry_origin_cm
@@ -1076,6 +1249,10 @@ def _pick_joint_origin(fj: FusionJoint):
     if fj.geometry_or_origin_one_cm:
         x, y, z = fj.geometry_or_origin_one_cm
         return (cm_to_m(x), cm_to_m(y), cm_to_m(z)), "geometryOrOriginOne"
+
+    if fj.occ_one_transform2_cm:
+        x, y, z = fj.occ_one_transform2_cm
+        return (cm_to_m(x), cm_to_m(y), cm_to_m(z)), "occ_one_transform2"
     
     if fj.occ_one_global_cm:
         x, y, z = fj.occ_one_global_cm
