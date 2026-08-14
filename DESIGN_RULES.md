@@ -412,6 +412,39 @@ Bake offsets appear in:
 - `<collision><origin>`
 - `bake_offset_m` in `robot_data.yaml`
 
+### 4.3 Post-Export Orientation Frames
+
+The default `[frames].convention = "ros"` applies an orientation-only frame
+layer after the canonical Fusion model has been built:
+
+- the URDF root follows the Fusion design world, with `X` forward and `Z` up
+- every revolute or continuous joint rotates about its child link's local `+Z`
+- visual meshes, collision geometry, inertial data, and physical joint motion
+  keep the same world poses
+
+Verbose exports write `config/frame_overrides.csv`. The `original_*` columns
+describe the extracted frames. Set a non-root link to `rule=world_rpy`, edit
+its `post_*_deg` columns, and reapply the frame layer without Fusion or mesh
+export:
+
+```powershell
+python tools/reframe.py <robot>_description
+```
+
+The offline command reads the canonical `debug/frame_model.json` cache. It
+rewrites only frame-dependent URDF, xacro, YAML, config, and documentation
+files. For a package exported before this cache existed, bootstrap it once
+from a matching snapshot:
+
+```powershell
+python tools/reframe.py <robot>_description --snapshot debug/snapshot.json
+```
+
+CSV overrides intentionally change orientation only. Moving a revolute frame
+away from its physical axis would change the motion unless an extra virtual
+frame were introduced. Use a Fusion `!frame_*` helper and export again when
+the frame position or joint origin must change.
+
 ## 5. Special Link Types
 
 ### 5.1 Empty Links and Reference Frames
@@ -472,10 +505,13 @@ Main outputs:
 | `urdf/assemblies/*.urdf.xacro` | Per-assembly macros |
 | `meshes/<assembly>/` | Visual and collision meshes |
 | `config/ros2_controllers.yaml` | Generated ros2_control controller configuration when enabled |
+| `config/frame_overrides.csv` | Editable post-export link orientation rules in verbose exports |
+| `config/FRAME_OVERRIDES.md` | Short guide for the frame override CSV |
 | `robot_data.yaml` | Data URDF cannot represent |
 | `docs/transforms.md` | Homogeneous transform chains |
 | `images/robot.png` | Fusion viewport screenshot |
 | `debug/snapshot.json` | Raw extraction snapshot |
+| `debug/frame_model.json` | Canonical model cache for offline frame regeneration |
 | `debug/export_log.md` | Export log |
 | `debug/validation.md` | Validation summary |
 

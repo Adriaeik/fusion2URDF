@@ -124,6 +124,20 @@ def generate_supplementary_yaml(
         if link.needs_mesh_bake:
             bk = link.mesh_bake_offset
             lines.append(f"    bake_offset_m: [{bk[0]:.6f}, {bk[1]:.6f}, {bk[2]:.6f}]")
+            mr = getattr(link, "mesh_origin_rpy", (0.0, 0.0, 0.0))
+            lines.append(
+                f"    mesh_origin_rpy_rad: "
+                f"[{mr[0]:.6f}, {mr[1]:.6f}, {mr[2]:.6f}]"
+            )
+
+        frame_rule = getattr(link, "frame_rule", "keep")
+        if frame_rule != "keep":
+            fr = getattr(link, "frame_rebase_rpy", (0.0, 0.0, 0.0))
+            lines.append(f"    frame_rule: {frame_rule}")
+            lines.append(
+                f"    frame_rebase_rpy_rad: "
+                f"[{fr[0]:.6f}, {fr[1]:.6f}, {fr[2]:.6f}]"
+            )
         
         if link.rigid_group_name:
             lines.append(f"    rigid_group: {yaml_safe_name(link.rigid_group_name)}")

@@ -213,8 +213,9 @@ the URDF link and joint frame are centered on the wheel axis.
 
 ![Wheel frame marker in rigid group](docs/images/frame-workflow/wheel-frame-marker-in-rigid-group.png)
 
-Check the axis before exporting. For the usual ROS convention, the wheel
-can rotate around local `Y` while local `Z` points up.
+Check the physical axis before exporting. With the default ROS frame
+convention, the exporter rebases each revolute child link so that this same
+physical axis becomes local `+Z`; the wheel mesh itself does not move.
 
 ![Wheel frame axis alignment](docs/images/frame-workflow/wheel-frame-axis-alignment.png)
 
@@ -572,7 +573,21 @@ Use this loop while modelling:
 9. Do a minimal-mode export to surface warnings cheaply.
 10. Fix warnings while the model is still easy to change.
 11. Run a full export with `fusion2URDF`.
-12. Inspect the generated URDF in VS Code, RViz, Gazebo, or Isaac Sim.
+12. Inspect `config/frame_overrides.csv`; leave `rule=auto` for the default
+    root `X`-forward/`Z`-up and revolute-axis `+Z` convention.
+13. Inspect the generated URDF in VS Code, RViz, Gazebo, or Isaac Sim.
+
+If a non-root link frame is still awkward, set its CSV rule to `world_rpy`,
+enter the desired absolute design-world orientation in `post_*_deg`, and run:
+
+```powershell
+python tools/reframe.py <robot>_description
+```
+
+This is an offline coordinate-frame change: cached geometry is compensated,
+so the mesh and physical mechanism do not move. A position/origin change is a
+different operation; put a `!frame_*` helper at the intended position in
+Fusion and export again.
 
 ## Common Problems
 
@@ -582,7 +597,8 @@ Use this loop while modelling:
 | Robot root is surprising | Joint direction is flipped | Check `occurrenceOne`/`occurrenceTwo` in Fusion |
 | Visual part missing | It was tagged `!collision_*` | Rename it unless it is meant as collision |
 | Rigid group exports oddly | Internal joint inside the group | Move the joint between links |
-| Link frame is wrong | Component origin is not the desired URDF frame | Add a `!frame_*` helper to the rigid group |
+| Link orientation is awkward | Exported axes are inconvenient | Edit `config/frame_overrides.csv` and run the offline reframe tool |
+| Link origin or joint position is wrong | Component origin is not the desired URDF frame | Add a `!frame_*` helper to the rigid group and export again |
 | Collision is too large | Primitive fit is too rough | Add simplified `!collision_*` geometry |
 | Simulation is slow | Too much exact mesh collision | Use primitives except where `!acc_*` is needed |
 | Closed loop warning | Link has multiple parents | Tag the intended loop-closing joint with `!closing_*` |

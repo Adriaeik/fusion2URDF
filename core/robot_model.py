@@ -261,7 +261,7 @@ def build_model(snapshot: FusionSnapshot, log: Logger) -> RobotModel:
     _drop_unreferenced_empty_occurrences(snapshot, occ_to_asm, edges, model, log)
     
     log.section("MODEL: DETECT ROOT")
-    root_asm, root_comp = _detect_root(edges, model, log)
+    root_asm, root_comp = _detect_root(edges, snapshot, occ_to_asm, model, log)
     
     log.section("MODEL: RESOLVE NAMES")
     name_map = _resolve_names(snapshot, occ_to_asm, root_asm, root_comp, model, log)
@@ -1240,12 +1240,14 @@ def _resolve_joint_paths(
         p_asm, p_comp, p_path = _resolve_occ_path(
             fj.occurrence_two_path, fj.occurrence_two_clean,
             defining, snapshot, occ_to_asm, redirects, member_to_anchor,
+            log,
         )
 
         # Resolve child (occurrenceOne)
         c_asm, c_comp, c_path = _resolve_occ_path(
             fj.occurrence_one_path, fj.occurrence_one_clean,
             defining, snapshot, occ_to_asm, redirects, member_to_anchor,
+            log,
         )
 
         # Drop joints internal to a rigid group.  Use full_path
@@ -1412,6 +1414,7 @@ def _resolve_occ_path(
     occ_to_asm: Dict[str, str],
     redirects: Optional[Dict[str, str]] = None,
     member_to_anchor: Optional[Dict[str, Tuple[str, str, str]]] = None,
+    log: Optional[Logger] = None,
 ) -> Tuple[str, str, str]:
     """
     Resolve a joint's local occurrence path to (assembly, component, full_path).
@@ -1430,8 +1433,10 @@ def _resolve_occ_path(
          collapsed into a rigid-group anchor.  Find the leaf's
          full_path in ``snapshot.occurrences``, look up the redirect
          by full_path, and return the anchor's (asm, clean, full_path).
-      4. Fallback: suffix-only match in occ_to_asm.
-      5. Last resort: defining component as assembly, full_path empty.
+      4. If the target is a container-only subassembly, redirect to that
+         subassembly's deterministic URDF root link.
+      5. Fallback: suffix-only match in occ_to_asm.
+      6. Last resort: defining component as assembly, full_path empty.
     """
     # Check redirect: joint targets a flattened collision sub-assembly
     if redirects and clean in redirects:
@@ -1470,6 +1475,14 @@ def _resolve_occ_path(
                 anchor_path, anchor_asm, anchor_clean = redirected
                 return anchor_asm, anchor_clean, anchor_path
 
+    # Joint endpoint may target a subassembly container. URDF has no
+    # container node, so use that subassembly's deterministic root link.
+    subasm_endpoint = _resolve_subassembly_endpoint(
+        local_path, clean, snapshot, occ_to_asm, member_to_anchor, log
+    )
+    if subasm_endpoint is not None:
+        return subasm_endpoint
+
     # No match by name+suffix — try suffix only
     for full_path, asm in occ_to_asm.items():
         if full_path.endswith(local_path):
@@ -1481,36 +1494,283 @@ def _resolve_occ_path(
     return defining_component, clean, ""
 
 
+def _resolve_subassembly_endpoint(
+    local_path: str,
+    clean: str,
+    snapshot: FusionSnapshot,
+    occ_to_asm: Dict[str, str],
+    member_to_anchor: Optional[Dict[str, Tuple[str, str, str]]] = None,
+    log: Optional[Logger] = None,
+) -> Optional[Tuple[str, str, str]]:
+    """Map a container subassembly joint endpoint to its URDF root link.
+
+    Fusion allows joints to target a subassembly occurrence. URDF has no
+    corresponding container node, so resolve that endpoint to a real link
+    inside the subassembly when the choice is deterministic:
+
+      * one surviving link candidate under the subassembly,
+      * one parent-only internal joint root under the subassembly, or
+      * one conventional root name (base_link, body_link, root_link) among
+        those root candidates.
+    """
+    if local_path == DESIGN_ROOT_OCCURRENCE_PATH:
+        return None
+
+    subasm = _find_subassembly_occurrence(local_path, clean, snapshot)
+    if subasm is None:
+        return None
+
+    subasm_path, subasm_occ = subasm
+    candidate_paths = _subassembly_link_candidate_paths(subasm_path, occ_to_asm)
+    if not candidate_paths:
+        return None
+
+    chosen = None
+    reason = ""
+    if len(candidate_paths) == 1:
+        chosen = candidate_paths[0]
+        reason = "single link candidate"
+    else:
+        root_paths = _subassembly_internal_root_paths(
+            subasm_path, candidate_paths, snapshot, member_to_anchor
+        )
+        if len(root_paths) == 1:
+            chosen = root_paths[0]
+            reason = "internal joint root"
+        else:
+            chosen = _pick_conventional_subassembly_root(
+                root_paths or candidate_paths, snapshot
+            )
+            if chosen:
+                reason = "conventional root name"
+
+    if chosen is None:
+        if log:
+            names = [
+                snapshot.occurrences[p].clean_name
+                for p in candidate_paths
+                if p in snapshot.occurrences
+            ]
+            log.warning(
+                f"Subassembly endpoint '{subasm_occ.clean_name}' is ambiguous; "
+                f"candidate links: {names}"
+            )
+        return None
+
+    occ = snapshot.occurrences.get(chosen)
+    asm = occ_to_asm.get(chosen)
+    if occ is None or asm is None:
+        return None
+
+    if log:
+        log(
+            f"  subassembly endpoint {subasm_occ.clean_name} ({subasm_path}) "
+            f"-> {asm}/{occ.clean_name} [{reason}]"
+        )
+    return asm, occ.clean_name, chosen
+
+
+def _find_subassembly_occurrence(
+    local_path: str,
+    clean: str,
+    snapshot: FusionSnapshot,
+) -> Optional[Tuple[str, FusionOccurrence]]:
+    """Find the subassembly occurrence named by a joint endpoint."""
+    matches: List[Tuple[str, FusionOccurrence]] = []
+    for full_path, occ in snapshot.occurrences.items():
+        if full_path == DESIGN_ROOT_OCCURRENCE_PATH:
+            continue
+        if not occ.is_subassembly:
+            continue
+        if clean and occ.clean_name != clean:
+            continue
+        if full_path == local_path or (local_path and full_path.endswith(local_path)):
+            matches.append((full_path, occ))
+
+    if not matches:
+        return None
+
+    matches.sort(key=lambda item: (item[0] != local_path, item[1].depth, item[0]))
+    return matches[0]
+
+
+def _subassembly_link_candidate_paths(
+    subasm_path: str,
+    occ_to_asm: Dict[str, str],
+) -> List[str]:
+    """Surviving URDF link candidate paths inside a subassembly."""
+    return sorted(
+        path for path in occ_to_asm
+        if path != subasm_path and _path_is_descendant_or_self(path, subasm_path)
+    )
+
+
+def _subassembly_internal_root_paths(
+    subasm_path: str,
+    candidate_paths: List[str],
+    snapshot: FusionSnapshot,
+    member_to_anchor: Optional[Dict[str, Tuple[str, str, str]]] = None,
+) -> List[str]:
+    """Return parent-only internal joint roots among candidate links."""
+    candidate_set = set(candidate_paths)
+    parents: Set[str] = set()
+    children: Set[str] = set()
+
+    for fj in snapshot.joints.values():
+        p_path = _resolve_endpoint_path_within_subassembly(
+            fj.occurrence_two_path, fj.occurrence_two_clean,
+            subasm_path, candidate_set, snapshot, member_to_anchor,
+        )
+        c_path = _resolve_endpoint_path_within_subassembly(
+            fj.occurrence_one_path, fj.occurrence_one_clean,
+            subasm_path, candidate_set, snapshot, member_to_anchor,
+        )
+        if not p_path or not c_path or p_path == c_path:
+            continue
+        parents.add(p_path)
+        children.add(c_path)
+
+    return sorted(parents - children)
+
+
+def _resolve_endpoint_path_within_subassembly(
+    local_path: str,
+    clean: str,
+    subasm_path: str,
+    candidate_set: Set[str],
+    snapshot: FusionSnapshot,
+    member_to_anchor: Optional[Dict[str, Tuple[str, str, str]]] = None,
+) -> Optional[str]:
+    """Resolve one joint endpoint to a candidate path inside a subassembly."""
+    matches = []
+    for path in candidate_set:
+        occ = snapshot.occurrences.get(path)
+        if not occ:
+            continue
+        if clean and occ.clean_name != clean:
+            continue
+        if local_path and path.endswith(local_path):
+            matches.append(path)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if member_to_anchor:
+        redirected = []
+        for path, occ in snapshot.occurrences.items():
+            if not _path_is_descendant_or_self(path, subasm_path):
+                continue
+            if clean and occ.clean_name != clean:
+                continue
+            if not (local_path and path.endswith(local_path)):
+                continue
+            anchor = member_to_anchor.get(path)
+            if anchor and anchor[0] in candidate_set:
+                redirected.append(anchor[0])
+        redirected_unique = sorted(set(redirected))
+        if len(redirected_unique) == 1:
+            return redirected_unique[0]
+
+    return None
+
+
+def _pick_conventional_subassembly_root(
+    paths: List[str],
+    snapshot: FusionSnapshot,
+) -> Optional[str]:
+    """Pick a conventional root-name link when exactly one is present."""
+    preferred_names = ("base_link", "body_link", "root_link")
+    for name in preferred_names:
+        matches = [
+            path for path in paths
+            if (occ := snapshot.occurrences.get(path)) is not None
+            and occ.clean_name == name
+        ]
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
 # ──────────────────────────────────────────────
 # Step 3: Detect root link
 # ──────────────────────────────────────────────
 
+def _pick_jointless_root(
+    snapshot: FusionSnapshot,
+    occ_to_asm: Dict[str, str],
+) -> Optional[Tuple[str, str]]:
+    """Pick a root for a design with no kinematic edges (no joints).
+
+    Prefers a conventional root-name link; otherwise falls back to the
+    first link-candidate occurrence in stable full_path order.  Returns
+    None only when there are no link candidates at all.
+    """
+    candidates = [
+        (path, snapshot.occurrences[path])
+        for path in sorted(
+            (p for p in snapshot.occurrences
+             if p in occ_to_asm
+             and _occurrence_is_link_candidate(snapshot.occurrences[p])),
+            key=lambda p: snapshot.occurrences[p].full_path or p,
+        )
+    ]
+    if not candidates:
+        return None
+
+    preferred_names = ("base_link", "body_link", "root_link")
+    for name in preferred_names:
+        for path, occ in candidates:
+            if occ.clean_name == name:
+                return (occ_to_asm[path], occ.clean_name)
+
+    path, occ = candidates[0]
+    return (occ_to_asm[path], occ.clean_name)
+
+
 def _detect_root(
     edges: List[KinematicEdge],
+    snapshot: FusionSnapshot,
+    occ_to_asm: Dict[str, str],
     model: RobotModel,
     log: Logger,
 ) -> Tuple[str, str]:
     """
     Find root link: appears as parent but never as child, with most descendants.
-    
+
     Returns:
         (assembly_name, component_name) of root
     """
+    # No joints at all — single rigid body (or several jointless links).
+    # There are no edges to derive a root from, so pick one directly from
+    # the link-candidate occurrences.  Common when exporting a standalone
+    # part (e.g. a camera body) that will be assembled elsewhere.
+    if not edges:
+        root = _pick_jointless_root(snapshot, occ_to_asm)
+        if root is None:
+            model.errors.append("No links found — nothing to export as a root")
+            raise ValueError("No exportable links: design has no joints and no link candidates")
+        model.warnings.append(
+            f"No joints found — exporting '{root[1]}' as a single root link. "
+            f"Add joints in Fusion if you expect a multi-link kinematic chain."
+        )
+        log.warning(f"No joints — single-link export, root: {root[0]}/{root[1]}")
+        return root
+
     # Collect all parent and child identities
     all_parents: Set[Tuple[str, str]] = set()
     all_children: Set[Tuple[str, str]] = set()
-    
+
     for e in edges:
         all_parents.add((e.parent_asm, e.parent_comp))
         all_children.add((e.child_asm, e.child_comp))
-    
+
     # Root candidates: parent but never child
     roots = all_parents - all_children
-    
+
     log(f"  Parent-only nodes: {len(roots)}")
     for r in roots:
         log(f"    {r[0]}/{r[1]}")
-    
+
     if len(roots) == 0:
         model.errors.append("No root found — kinematic chain has a cycle")
         # Fallback: pick the node with most outgoing edges
@@ -1833,6 +2093,12 @@ def _build_links(
                 # Store the collision occurrence path for mesh export
                 link._collision_sibling_path = flatten_pairs[occ.clean_name]
                 log(f"  {urdf_name}: explicit collision from flattened sibling")
+
+        # Preserve the authoritative orientation of this link's source
+        # occurrence in Fusion design-world coordinates.  Phase 3 can then
+        # rebase the exported frame (for ROS X-forward/Z-up and joint-axis
+        # conventions) without reaching back into the Fusion API.
+        link.source_world_rotation = _global_rotation_for_occurrence(path, snapshot)
 
         model.links[urdf_name] = link
 

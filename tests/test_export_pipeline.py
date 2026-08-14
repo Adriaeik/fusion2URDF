@@ -959,6 +959,9 @@ def test_package_structure():
         assert os.path.isfile(os.path.join(pkg_dir, "launch", "display.launch.py"))
         assert os.path.isfile(os.path.join(pkg_dir, "rviz", "display.rviz"))
         assert os.path.isfile(os.path.join(pkg_dir, "config", "joint_state.yaml"))
+        assert os.path.isfile(os.path.join(pkg_dir, "config", "frame_overrides.csv"))
+        assert os.path.isfile(os.path.join(pkg_dir, "config", "FRAME_OVERRIDES.md"))
+        assert os.path.isfile(os.path.join(tmpdir, "debug", "frame_model.json"))
         assert os.path.isdir(os.path.join(pkg_dir, "meshes"))
     
     print("  package_structure: PASS")
@@ -1807,12 +1810,33 @@ def test_real_snapshot_package():
         # Root link first
         assert links[0].attrib['name'] == 'base_link'
         
-        # All links have inertial, visual, collision
+        # Link element contents depend on the source role:
+        # physical links have inertial/visual/collision, accidental empty
+        # links keep minimal inertial only, and explicit !frame_* links are
+        # pure frames with no geometry or inertial.
         for link_elem in links:
             name = link_elem.attrib['name']
-            assert link_elem.find('inertial') is not None, f"Missing inertial: {name}"
-            assert link_elem.find('visual') is not None, f"Missing visual: {name}"
-            assert link_elem.find('collision') is not None, f"Missing collision: {name}"
+            model_link = model.links.get(name)
+            assert model_link is not None, f"URDF link not found in model: {name}"
+
+            inertial = link_elem.find('inertial')
+            visual = link_elem.find('visual')
+            collision = link_elem.find('collision')
+
+            if getattr(model_link, "is_frame_only", False):
+                assert inertial is None, f"Frame-only link should omit inertial: {name}"
+                assert visual is None, f"Frame-only link should omit visual: {name}"
+                assert collision is None, f"Frame-only link should omit collision: {name}"
+                continue
+
+            assert inertial is not None, f"Missing inertial: {name}"
+            if getattr(model_link, "is_empty", False):
+                assert visual is None, f"Empty link should omit visual: {name}"
+                assert collision is None, f"Empty link should omit collision: {name}"
+                continue
+
+            assert visual is not None, f"Missing visual: {name}"
+            assert collision is not None, f"Missing collision: {name}"
         
         # All joints reference existing links
         link_names = {l.attrib['name'] for l in links}
@@ -2215,8 +2239,10 @@ def run_all():
     test_user_config_apply_minimal_verbosity()
     test_user_config_per_key_override_wins()
     test_user_config_accepts_convex_hull_collision_method()
+    test_user_config_accepts_frame_options()
     test_user_config_accepts_ros2_control_options()
     test_user_config_prefers_plugin_local_config_path()
+    test_verbose_package_emits_frame_config_without_rviz_or_control()
     test_minimal_package_skips_optional_dirs()
 
     # Tree viz
@@ -2232,12 +2258,14 @@ def run_all():
     test_urdf_uses_collision_stl_when_visual_missing()
     test_flat_design_emits_assembly_xacro()
     test_safe_identifier_strips_non_ascii_for_urdf()
+    test_numeric_assembly_name_is_xacro_safe()
     test_urdf_material_names_are_ascii_safe()
     test_urdf_joint_names_are_ascii_safe()
     test_acc_prefix_recognised_and_stripped()
     test_acc_rigid_group_uses_visual_mesh_as_collision()
     test_collision_override_prefixes_force_method()
     test_per_member_obj_concat_transforms_and_namespaces()
+    test_merged_obj_anchor_correction_uses_lca_relative_transform()
     test_invalid_fusion_joint_endpoint_is_skipped()
     test_root_side_invalid_joint_endpoint_uses_design_root()
     test_root_component_visual_export_uses_root_bodies_directly()
@@ -2444,6 +2472,26 @@ def test_user_config_accepts_convex_hull_collision_method():
     print("  user_config_accepts_convex_hull_collision_method: PASS")
 
 
+def test_user_config_accepts_frame_options():
+    """TOML selects the frame convention and keeps its CSV inside config/."""
+    from ..core.user_config import apply_to_config
+    from ..core.data_types import ExportConfig
+
+    cfg = ExportConfig()
+    changes = apply_to_config(cfg, {
+        "frames": {
+            "convention": "FUSION",
+            "overrides_file": "nested/custom_frames.csv",
+        },
+    })
+    assert cfg.frame_convention == "fusion"
+    assert cfg.frame_overrides_filename == "custom_frames.csv"
+    assert "frames.convention = fusion" in changes
+    assert "frames.overrides_file = custom_frames.csv" in changes
+
+    print("  user_config_accepts_frame_options: PASS")
+
+
 def test_user_config_accepts_ros2_control_options():
     """TOML can disable ros2_control and tune the generated mock system."""
     from ..core.user_config import apply_to_config
@@ -2578,6 +2626,38 @@ def test_tree_render_marks_multi_parent():
         f"tree should be clean of multi-parent markers after auto-classification:\n{tree}"
     )
     print("  tree_render_marks_multi_parent: PASS")
+
+
+def test_verbose_package_emits_frame_config_without_rviz_or_control():
+    """Verbose frame controls do not depend on unrelated config features."""
+    from ..core.robot_model import build_model
+    from ..core.package_generator import generate_package
+    from ..core.data_types import ExportConfig
+
+    model = build_model(_make_snapshot(), _make_logger())
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = ExportConfig(
+            package_name="test_robot_description",
+            output_dir=tmp,
+            verbosity="verbose",
+            include_rviz=False,
+            include_ros2_control=False,
+            include_docs=False,
+            include_robot_data_yaml=False,
+            include_readme=False,
+        )
+        pkg = generate_package(model, cfg, _make_logger())
+        assert os.path.isfile(
+            os.path.join(pkg, "config", "frame_overrides.csv")
+        )
+        assert os.path.isfile(
+            os.path.join(pkg, "config", "FRAME_OVERRIDES.md")
+        )
+        with open(os.path.join(pkg, "CMakeLists.txt"), encoding="utf-8") as f:
+            cmake = f.read()
+        assert "config" in cmake.split("install(DIRECTORY", 1)[1].split(")", 1)[0]
+
+    print("  verbose_package_emits_frame_config_without_rviz_or_control: PASS")
 
 
 def test_minimal_package_skips_optional_dirs():
@@ -3037,6 +3117,119 @@ def test_per_member_obj_concat_transforms_and_namespaces():
         assert "0.1 0.2 0.3" in mtl_text
 
     print("  per_member_obj_concat_transforms_and_namespaces: PASS")
+
+
+def test_merged_obj_anchor_correction_uses_lca_relative_transform():
+    """Merged OBJ vertices use the anchor pose relative to the export LCA.
+
+    Using an anchor transform relative to an intermediate parent assembly
+    displaces root-spanning rigid groups when the nested component has an
+    unusual parent-local origin.
+    """
+    from ..core.data_types import FusionOccurrence, FusionSnapshot, Transform3D
+    from ..core.fusion_extractor import (
+        _maybe_apply_anchor_frame_correction, _read_obj_data,
+    )
+    from ..core.robot_model import _mat3_mul, _rotate_vec3_by_mat3
+
+    rz_90 = (0.0, -1.0, 0.0,
+             1.0,  0.0, 0.0,
+             0.0,  0.0, 1.0)
+    rx_90 = (1.0, 0.0,  0.0,
+             0.0, 0.0, -1.0,
+             0.0, 1.0,  0.0)
+    identity = (1.0, 0.0, 0.0,
+                0.0, 1.0, 0.0,
+                0.0, 0.0, 1.0)
+
+    def write_obj(path, vertex, normal):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"v {vertex[0]} {vertex[1]} {vertex[2]}\n")
+            f.write(f"vn {normal[0]} {normal[1]} {normal[2]}\n")
+
+    def assert_vec_close(actual, expected):
+        assert all(abs(a - e) < 1e-6 for a, e in zip(actual, expected)), (
+            f"expected {expected}, got {actual}"
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # Root LCA: local_transform is deliberately unrelated. Fusion's
+        # root-targeted OBJ must instead be inverted with transform2.
+        root_obj = os.path.join(tmp, "root_lca.obj")
+        anchor_local_vertex = (2.0, 3.0, 4.0)  # OBJ units: cm
+        anchor_local_normal = (1.0, 0.0, 0.0)
+        anchor_world_translation = (0.12, -0.34, 0.56)  # metres
+        rotated_vertex = _rotate_vec3_by_mat3(anchor_local_vertex, rz_90)
+        root_vertex = tuple(
+            rotated_vertex[i] + anchor_world_translation[i] * 100.0
+            for i in range(3)
+        )
+        root_normal = _rotate_vec3_by_mat3(anchor_local_normal, rz_90)
+        write_obj(root_obj, root_vertex, root_normal)
+
+        root_anchor = FusionOccurrence(
+            local_transform=Transform3D(
+                translation=(1.94, -0.06, 0.04), rotation=identity,
+            ),
+            transform2=Transform3D(
+                translation=anchor_world_translation, rotation=rz_90,
+            ),
+        )
+        _maybe_apply_anchor_frame_correction(
+            root_obj, root_anchor, "", FusionSnapshot(), _make_logger(),
+        )
+        corrected = _read_obj_data(root_obj)
+        assert_vec_close(corrected["vertices"][0], anchor_local_vertex)
+        assert_vec_close(corrected["normals"][0], anchor_local_normal)
+
+        # Nested LCA: derive LCA inverse * anchor from the two world poses.
+        nested_obj = os.path.join(tmp, "nested_lca.obj")
+        lca_translation = (1.0, 2.0, 3.0)
+        anchor_in_lca_translation = (0.2, 0.3, 0.4)
+        anchor_world_rotation = _mat3_mul(rz_90, rx_90)
+        anchor_world_offset = _rotate_vec3_by_mat3(
+            anchor_in_lca_translation, rz_90,
+        )
+        nested_anchor_world_translation = tuple(
+            lca_translation[i] + anchor_world_offset[i] for i in range(3)
+        )
+        lca_vertex_rotated = _rotate_vec3_by_mat3(
+            anchor_local_vertex, rx_90,
+        )
+        lca_vertex = tuple(
+            lca_vertex_rotated[i] + anchor_in_lca_translation[i] * 100.0
+            for i in range(3)
+        )
+        lca_normal = _rotate_vec3_by_mat3(anchor_local_normal, rx_90)
+        write_obj(nested_obj, lca_vertex, lca_normal)
+
+        lca_path = "outer:1"
+        snap = FusionSnapshot(occurrences={
+            lca_path: FusionOccurrence(
+                full_path=lca_path,
+                transform2=Transform3D(
+                    translation=lca_translation, rotation=rz_90,
+                ),
+            ),
+        })
+        nested_anchor = FusionOccurrence(
+            parent_path="outer:1+middle:1",
+            local_transform=Transform3D(
+                translation=(9.0, 8.0, 7.0), rotation=identity,
+            ),
+            transform2=Transform3D(
+                translation=nested_anchor_world_translation,
+                rotation=anchor_world_rotation,
+            ),
+        )
+        _maybe_apply_anchor_frame_correction(
+            nested_obj, nested_anchor, lca_path, snap, _make_logger(),
+        )
+        corrected = _read_obj_data(nested_obj)
+        assert_vec_close(corrected["vertices"][0], anchor_local_vertex)
+        assert_vec_close(corrected["normals"][0], anchor_local_normal)
+
+    print("  merged_obj_anchor_correction_uses_lca_relative_transform: PASS")
 
 
 def test_invalid_fusion_joint_endpoint_is_skipped():
@@ -3658,6 +3851,24 @@ def test_safe_identifier_strips_non_ascii_for_urdf():
     assert safe_identifier("aluminum_6061") == "aluminum_6061"
 
     print("  safe_identifier_strips_non_ascii_for_urdf: PASS")
+
+
+def test_numeric_assembly_name_is_xacro_safe():
+    """Part-number assembly names must remain valid XML/xacro tag names."""
+    from ..core.xacro_generator import XACRO_NS, _xacro_macro_name
+
+    assert _xacro_macro_name("turret") == "turret"
+    assert _xacro_macro_name("10034_Servo_Pack") == "assembly_10034_Servo_Pack"
+    assert _xacro_macro_name("10034 Servo Pack") == "assembly_10034_Servo_Pack"
+
+    macro_name = _xacro_macro_name("10034_Servo_Pack")
+    ET.fromstring(
+        f'<robot xmlns:xacro="{XACRO_NS}">'
+        f'<xacro:{macro_name} prefix=""/>'
+        f'</robot>'
+    )
+
+    print("  numeric_assembly_name_is_xacro_safe: PASS")
 
 
 def test_urdf_material_names_are_ascii_safe():

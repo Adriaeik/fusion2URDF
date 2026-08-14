@@ -16,8 +16,18 @@ If a component origin is wrong but the geometry is otherwise good, add a
 merged link frame and does not export as geometry. This is the preferred fix
 for base frames, wheel centers, sensor frames, mount frames, and tool frames.
 
-If many joints were created around the wrong world orientation, rebuilding the
-small assembly can be faster and safer than trying to patch every joint.
+Orientation cleanup no longer requires rebuilding the assembly. The default
+post-export ROS convention keeps the Fusion design-world root `X` forward and
+`Z` up and rebases revolute/continuous child frames to local `+Z`. A verbose
+export writes `config/frame_overrides.csv`; `auto`, `keep`, and non-root
+`world_rpy` rules can be reapplied from `debug/frame_model.json` without
+reopening Fusion or regenerating meshes.
+
+Frame overrides are orientation-only. They cannot move a link origin or a
+joint's physical axis position while preserving revolute motion. For those
+changes, place a `!frame_*` helper at the intended position and export again.
+An arbitrary root `world_rpy` also requires a wrapper link, so the root uses
+the selected automatic convention instead.
 
 ## Rigid Groups
 

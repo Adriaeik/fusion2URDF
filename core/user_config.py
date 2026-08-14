@@ -217,6 +217,10 @@ def apply_to_config(cfg, toml_data: Dict[str, Dict[str, Any]]) -> list:
         collision_method = "primitive"   # or "convex_hull" / "visual_reuse"
         mesh_refinement = "medium"       # low / medium / high
 
+        [frames]
+        convention = "ros"      # root X-forward/Z-up; revolute axis +Z
+        overrides_file = "frame_overrides.csv"
+
         [ros2_control]
         hardware_plugin = "mock_components/GenericSystem"
         update_rate = 100
@@ -230,6 +234,7 @@ def apply_to_config(cfg, toml_data: Dict[str, Dict[str, Any]]) -> list:
     output = toml_data.get("output", {}) or {}
     features = toml_data.get("features", {}) or {}
     mesh = toml_data.get("mesh", {}) or {}
+    frames_cfg = toml_data.get("frames", {}) or {}
     ros2_control = toml_data.get("ros2_control", {}) or {}
 
     # Verbosity drives default include_* values; explicit [features]
@@ -267,6 +272,19 @@ def apply_to_config(cfg, toml_data: Dict[str, Dict[str, Any]]) -> list:
     if "mesh_refinement" in mesh and isinstance(mesh["mesh_refinement"], str):
         cfg.mesh_refinement = mesh["mesh_refinement"].lower().strip()
         changes.append(f"mesh_refinement = {cfg.mesh_refinement}")
+
+    if "convention" in frames_cfg and isinstance(frames_cfg["convention"], str):
+        cfg.frame_convention = frames_cfg["convention"].lower().strip()
+        changes.append(f"frames.convention = {cfg.frame_convention}")
+    if "overrides_file" in frames_cfg and isinstance(frames_cfg["overrides_file"], str):
+        # Keep the generated/editable CSV inside package config/.  A basename
+        # also prevents a personal TOML from escaping the export directory.
+        cfg.frame_overrides_filename = os.path.basename(
+            frames_cfg["overrides_file"].strip()
+        ) or "frame_overrides.csv"
+        changes.append(
+            f"frames.overrides_file = {cfg.frame_overrides_filename}"
+        )
 
     if "hardware_plugin" in ros2_control and isinstance(ros2_control["hardware_plugin"], str):
         cfg.ros2_control_hardware_plugin = ros2_control["hardware_plugin"].strip()

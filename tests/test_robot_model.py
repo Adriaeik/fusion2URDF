@@ -1379,6 +1379,139 @@ def test_auto_rigid_island_collapses_nested_subassemblies_without_joints():
     print("  auto_rigid_island_collapses_nested_subassemblies_without_joints: PASS")
 
 
+def test_subassembly_joint_endpoint_resolves_to_internal_root_link():
+    """A joint to a subassembly container should attach to its root link.
+
+    This matches Fusion as-built joints authored between top-level
+    subassemblies, where the URDF tree still needs real link endpoints.
+    """
+    from ..core.data_types import (
+        FusionSnapshot,
+        FusionOccurrence,
+        FusionJoint,
+        InertiaTensor,
+        RigidGroupInfo,
+        Transform3D,
+    )
+    from ..core.robot_model import build_model
+
+    snap = FusionSnapshot(
+        design_name="lonewolf_primitive v1",
+        design_name_clean="lonewolf_primitive",
+    )
+
+    def make_occ(
+        path, clean, segs, *, is_sub=False, mass=0.0, bodies=0,
+        pos=(0.0, 0.0, 0.0), is_frame=False, bbox=0.1,
+    ):
+        half = bbox / 2.0
+        return FusionOccurrence(
+            full_path=path,
+            component_name=clean,
+            clean_name=clean,
+            path_segments=list(segs),
+            depth=len(segs) - 1,
+            is_subassembly=is_sub,
+            is_frame_only=is_frame,
+            child_count=1 if is_sub else 0,
+            global_position=pos,
+            local_transform=Transform3D(translation=pos),
+            transform2=Transform3D(translation=pos),
+            mass_kg=mass,
+            body_count=bodies,
+            com_component_local=(0.0, 0.0, 0.0),
+            com_global=pos,
+            inertia_at_origin=InertiaTensor(ixx=0.01, iyy=0.01, izz=0.01),
+            inertia_at_com=InertiaTensor(ixx=0.01, iyy=0.01, izz=0.01),
+            bbox_min=(-half, -half, -half),
+            bbox_max=(half, half, half),
+            bbox_size=(bbox, bbox, bbox),
+            volume_m3=bbox ** 3,
+            area_m2=6 * bbox * bbox,
+        )
+
+    panther = "dummy_panther v14:1"
+    body = f"{panther}+body_link v5:1"
+    wheel = f"{panther}+rl_wheel_link v5:1"
+    rail_asm = "rail_mount_plate v10:1"
+    rail_frame = f"{rail_asm}+!frame_rail_mount_plate_link v1:1"
+    rail_plate = f"{rail_asm}+rail_mount_link v11:1"
+
+    snap.occurrences = {
+        panther: make_occ(panther, "dummy_panther", ["dummy_panther"], is_sub=True),
+        body: make_occ(body, "body_link", ["dummy_panther", "body_link"],
+                       mass=10.0, bodies=1),
+        wheel: make_occ(wheel, "rl_wheel_link", ["dummy_panther", "rl_wheel_link"],
+                        mass=1.0, bodies=1, pos=(-0.2, 0.25, 0.0)),
+        rail_asm: make_occ(rail_asm, "rail_mount_plate", ["rail_mount_plate"],
+                           is_sub=True, pos=(0.0, 0.0, 0.177)),
+        rail_frame: make_occ(
+            rail_frame, "rail_mount_plate_link",
+            ["rail_mount_plate", "rail_mount_plate_link"],
+            pos=(0.0, 0.0, 0.177), is_frame=True,
+        ),
+        rail_plate: make_occ(
+            rail_plate, "rail_mount_link", ["rail_mount_plate", "rail_mount_link"],
+            mass=2.0, bodies=1, pos=(0.0, 0.0, 0.177), bbox=0.4,
+        ),
+    }
+
+    snap.rigid_groups.append(RigidGroupInfo(
+        name="rail_mount_plate_link",
+        occurrence_paths=[rail_frame, rail_plate],
+        member_clean_names=["rail_mount_plate_link", "rail_mount_link"],
+    ))
+    snap.joints = {
+        "rl_wheel": FusionJoint(
+            name="rl_wheel",
+            joint_source="as_built",
+            defining_component="dummy_panther",
+            motion_type="revolute",
+            occurrence_one_path="rl_wheel_link v5:1",
+            occurrence_one_clean="rl_wheel_link",
+            occurrence_two_path="body_link v5:1",
+            occurrence_two_clean="body_link",
+            origin_global_m=(-0.2, 0.25, 0.0),
+            origin_source="geometry.origin",
+            axis_vector=(0.0, 1.0, 0.0),
+        ),
+        "body_to_rail_mount_joint": FusionJoint(
+            name="body_to_rail_mount_joint",
+            joint_source="as_built",
+            defining_component="lonewolf_primitive",
+            motion_type="rigid",
+            occurrence_one_path=rail_asm,
+            occurrence_one_clean="rail_mount_plate",
+            occurrence_two_path=panther,
+            occurrence_two_clean="dummy_panther",
+            origin_global_m=(0.0, 0.0, 0.177),
+            origin_source="occ_one_global",
+            axis_vector=(0.0, 0.0, 1.0),
+        ),
+    }
+
+    model = build_model(snap, _make_logger())
+
+    assert not model.errors, f"unexpected errors: {model.errors}"
+    assert set(model.links) == {"base_link", "rl_wheel_link", "rail_mount_plate_link"}
+    rail = model.links["rail_mount_plate_link"]
+    assert rail.is_merged
+    assert rail.mass_kg == 2.0
+    assert rail_frame in rail.merged_member_paths
+    assert rail_plate in rail.merged_member_paths
+    assert not any("Dropped unreferenced" in w for w in model.warnings)
+    assert not any("could not resolve" in w for w in model.warnings)
+
+    joint = model.joints["body_to_rail_mount_joint"]
+    assert joint.parent_link == "base_link"
+    assert joint.child_link == "rail_mount_plate_link"
+    assert joint.joint_type == "fixed"
+    assert joint.is_mount
+    assert joint.origin_xyz == (0.0, 0.0, 0.177)
+
+    print("  subassembly_joint_endpoint_resolves_to_internal_root_link: PASS")
+
+
 def test_auto_rigid_island_preserves_articulated_subassembly():
     """A subassembly with an internal joint must remain articulated."""
     from ..core.data_types import (
@@ -2320,6 +2453,50 @@ def test_passive_joint_propagates_flag():
     print("  passive_joint_propagates_flag: PASS")
 
 
+def test_jointless_single_link_exports_as_root():
+    """A design with no joints (e.g. a standalone camera body) must
+    export as a single root link instead of crashing in _detect_root."""
+    from ..core.robot_model import build_model
+
+    snap = _make_snapshot({
+        "design_name": "camera v1",
+        "design_name_clean": "camera",
+        "root_component_name": "camera",
+        "occurrences": {
+            "camera v1:1": {
+                "full_path": "camera v1:1",
+                "component_name": "camera v1",
+                "clean_name": "camera",
+                "path_segments": ["camera"],
+                "depth": 0,
+                "is_subassembly": False,
+                "global_position": [0.0, 0.0, 0.0],
+                "local_transform": {"translation": [0, 0, 0], "rotation": [[1,0,0],[0,1,0],[0,0,1]]},
+                "assembly_context_depth": 0,
+                "mass_kg": 0.1, "body_count": 1, "bodies": [],
+                "com_component_local": [0, 0, 0], "com_global": [0, 0, 0],
+                "inertia_at_origin": {"ixx":0.001,"iyy":0.001,"izz":0.001,"ixy":0,"ixz":0,"iyz":0},
+                "inertia_at_com": {"ixx":0.001,"iyy":0.001,"izz":0.001,"ixy":0,"ixz":0,"iyz":0},
+                "bbox_size": [0.03, 0.03, 0.03], "volume_m3": 1e-5, "area_m2": 0.005,
+                "material_name": "", "appearance_name": "", "appearance_color_rgb": None,
+            },
+        },
+        "joints": {},
+    })
+
+    model = build_model(snap, _make_logger())
+
+    assert len(model.joints) == 0, f"Expected no joints, got {list(model.joints)}"
+    assert len(model.links) == 1, f"Expected 1 link, got {list(model.links)}"
+    assert model.root_link, "root_link must be set for a jointless export"
+    assert model.root_link in model.links
+    assert len(model.errors) == 0, f"Unexpected errors: {model.errors}"
+    assert any("No joints found" in w for w in model.warnings), \
+        f"Expected a 'no joints' warning, got: {model.warnings}"
+
+    print("  jointless_single_link_exports_as_root: PASS")
+
+
 # ──────────────────────────────────────────────
 # Runner
 # ──────────────────────────────────────────────
@@ -2353,8 +2530,10 @@ def run_all():
     test_rigid_group_merge_collision_member_excluded_from_anchor_choice()
     test_rigid_group_body_owning_subassembly_with_design_root_joints()
     test_auto_rigid_island_collapses_nested_subassemblies_without_joints()
+    test_subassembly_joint_endpoint_resolves_to_internal_root_link()
     test_auto_rigid_island_preserves_articulated_subassembly()
     test_orphan_link_is_error()
+    test_jointless_single_link_exports_as_root()
     test_unreferenced_empty_occurrence_is_dropped()
     test_frame_only_child_joint_forced_fixed()
     test_real_snapshot()

@@ -30,6 +30,11 @@ from datetime import datetime
 from .data_types import RobotModel, ExportConfig
 from .xacro_generator import generate_urdf
 from .collision_generator import resolve_collision, generate_collision_meshes
+from .frame_rebaser import (
+    FRAME_CACHE_FILENAME,
+    configure_frames,
+    save_frame_cache,
+)
 from .xacro_generator import generate_xacro_package
 from .ros2_control_generator import (
     command_interfaces,
@@ -82,10 +87,15 @@ def generate_package(
     ]
     if getattr(config, "include_launch", True):
         dirs.append(os.path.join(pkg_dir, "launch"))
+    emit_frame_artifacts = (
+        str(getattr(config, "verbosity", "verbose")).strip().lower()
+        != "minimal"
+    )
     if getattr(config, "include_rviz", True):
         dirs.append(os.path.join(pkg_dir, "rviz"))
     if (getattr(config, "include_rviz", True)
-            or ros2_control_enabled(config, model)):
+            or ros2_control_enabled(config, model)
+            or emit_frame_artifacts):
         dirs.append(os.path.join(pkg_dir, "config"))
 
     for d in dirs:
@@ -96,14 +106,31 @@ def generate_package(
     
     # 2. Generate collision STL files from automatic collision methods
     generate_collision_meshes(model, pkg_dir, log)
+
+    # 3. Cache the canonical collision-resolved model, then apply the
+    # orientation-only frame layer.  The cache makes CSV edits replayable
+    # without another slow Fusion extraction or mesh export.
+    log.section("PACKAGE: FRAMES")
+    frame_cache_path = os.path.join(
+        config.output_dir, "debug", FRAME_CACHE_FILENAME
+    )
+    save_frame_cache(model, config, frame_cache_path)
+    log(f"  -> debug/{FRAME_CACHE_FILENAME} (pre-frame cache)")
+    configure_frames(
+        model,
+        config,
+        pkg_dir,
+        log,
+        emit_artifacts=emit_frame_artifacts,
+    )
     
-    # 3. Generate xacro files (hierarchical)
+    # 4. Generate xacro files (hierarchical)
     log.section("PACKAGE: XACRO")
     xacro_files = generate_xacro_package(model, config, pkg_dir)
     for rel_path in sorted(xacro_files.keys()):
         log(f"  → {rel_path}")
     
-    # 4. Also generate flat URDF for validation/debugging
+    # 5. Also generate flat URDF for validation/debugging
     log.section("PACKAGE: URDF (flat, for validation)")
     urdf_xml = generate_urdf(model, config)
     urdf_path = os.path.join(pkg_dir, "urdf", f"{model.name}.urdf")
@@ -236,6 +263,64 @@ def generate_package(
         log(f"  Launch: ros2 launch {config.package_name} display.launch.py")
 
     return pkg_dir
+
+
+def regenerate_frame_outputs(
+    model: RobotModel,
+    config: ExportConfig,
+    pkg_dir: str,
+    log: Logger,
+) -> None:
+    """Rewrite frame-dependent outputs from a cached canonical model.
+
+    Mesh and collision generation are deliberately skipped.  ``model`` must
+    already have collision information and frame rebases applied (normally by
+    ``tools/reframe.py`` after loading ``debug/frame_model.json``).
+    """
+    os.makedirs(os.path.join(pkg_dir, "urdf", "assemblies"), exist_ok=True)
+    os.makedirs(os.path.join(pkg_dir, "config"), exist_ok=True)
+
+    log.section("OFFLINE FRAMES: XACRO + URDF")
+    xacro_files = generate_xacro_package(model, config, pkg_dir)
+    for rel_path in sorted(xacro_files):
+        log(f"  -> {rel_path}")
+
+    urdf_xml = generate_urdf(model, config)
+    urdf_path = os.path.join(pkg_dir, "urdf", f"{model.name}.urdf")
+    _write_file(urdf_path, urdf_xml)
+    log(f"  -> urdf/{model.name}.urdf")
+
+    if getattr(config, "include_rviz", True):
+        _write_file(
+            os.path.join(pkg_dir, "config", "joint_state.yaml"),
+            _generate_joint_config(model, config),
+        )
+        log("  -> config/joint_state.yaml")
+
+    if ros2_control_enabled(config, model):
+        _write_file(
+            os.path.join(pkg_dir, "config", "ros2_controllers.yaml"),
+            generate_ros2_controllers_yaml(model, config),
+        )
+        log("  -> config/ros2_controllers.yaml")
+
+    yaml_required = (
+        getattr(config, "include_robot_data_yaml", True)
+        or bool(getattr(model, "closing_joints", None))
+    )
+    docs_required = getattr(config, "include_docs", True)
+    if yaml_required or docs_required:
+        from .supplementary_export import (
+            generate_supplementary_yaml,
+            generate_transforms_doc,
+        )
+        if yaml_required:
+            generate_supplementary_yaml(model, config, pkg_dir, log)
+        if docs_required:
+            generate_transforms_doc(model, pkg_dir, log)
+
+    if getattr(config, "include_readme", True):
+        _generate_robot_readme(model, config, pkg_dir, log)
 
 
 def generate_validation_report(model: RobotModel, config: ExportConfig, debug_dir: str):
@@ -447,8 +532,13 @@ def _generate_cmake(model: RobotModel, config: ExportConfig) -> str:
         install_dirs.append("launch")
     if getattr(config, "include_rviz", True):
         install_dirs.append("rviz")
+    emit_frame_artifacts = (
+        str(getattr(config, "verbosity", "verbose")).strip().lower()
+        != "minimal"
+    )
     if (getattr(config, "include_rviz", True)
-            or ros2_control_enabled(config, model)):
+            or ros2_control_enabled(config, model)
+            or emit_frame_artifacts):
         install_dirs.append("config")
     return f"""cmake_minimum_required(VERSION 3.8)
 project({config.package_name})

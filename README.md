@@ -12,6 +12,29 @@ The whole thing is built on one idea: the exporter shall adapt to **your design 
 
 If your design style breaks it, please file an issue describing how. I don't think it will (jk, it probably will). And of course, all of the above is configurable through `xacro_export.toml`.
 
+## What's new in 3.1
+
+Version 3.1 adds a post-export frame layer. By default, the root follows the
+Fusion design world with `X` forward and `Z` up, while each revolute or
+continuous joint rotates about its child link's local `+Z`. Visual meshes,
+collision geometry, inertial data, joint origins, and physical motion are
+compensated together, so changing the coordinate frames does not move the
+robot.
+
+Verbose exports include `config/frame_overrides.csv` and a canonical
+`debug/frame_model.json` cache. Edit a frame rule and regenerate the
+frame-dependent files without reopening Fusion or exporting meshes again:
+
+```powershell
+# From the fusion2URDF repository root:
+python tools/reframe.py <path-to-robot_description>
+```
+
+This release also fixes nested rigid-group mesh anchoring and resolves Fusion
+joints aimed at a subassembly container to that subassembly's real root link.
+Jointless parts export cleanly as single-link packages, and assembly names
+that begin with part numbers now generate XML-safe xacro macros.
+
 ![Exported Panther frames preview](docs/images/frame-workflow/exported-panther-frames-preview.png)
 
 > Here is the Husarion Panther exported with fusion2URDF, viewed in RViz. Every link, joint, mesh, frame, and `ros2_control` block was generated automatically from the Fusion design.
@@ -97,7 +120,7 @@ The exporter runs out of the box. To pin local defaults, copy the template:
 cp xacro_export.template.toml xacro_export.toml
 ```
 
-`xacro_export.toml` is gitignored so each contributor keeps their own. The three settings most people end up touching:
+`xacro_export.toml` is gitignored so each contributor keeps their own. Common settings:
 
 ```toml
 [output]
@@ -117,6 +140,12 @@ visual_format = "dae"
 # "convex_hull"  generates a convex STL from the visual mesh vertices.
 # "visual_reuse" uses the visual mesh as collision (heavy but exact).
 collision_method = "primitive"
+
+[frames]
+# "ros" gives the root X-forward/Z-up and movable child axes on local +Z.
+# "fusion" keeps the orientations extracted from Fusion unless CSV-overridden.
+convention = "ros"
+overrides_file = "frame_overrides.csv"
 ```
 
 The full list (per-feature toggles, ros2_control hardware plugin, zip output, mesh refinement) is in [`xacro_export.template.toml`](xacro_export.template.toml) with comments next to every key.
@@ -160,6 +189,7 @@ No URDF edits, no missing meshes, no broken joint frames. (If you find one, file
 - **Six-strategy collision pipeline**: explicit `!collision_*` geometry, per-link `!acc_*` / `!cxh_*` / `!pri_*` overrides, auto-fitted primitive (box / cylinder / sphere) from bounding box, generated convex hulls, or visual-mesh fallback. Yes, you can mix all of them in one robot.
 - **Closed-loop joint sidecar.** URDF can't model cycles, so loop-closing joints (tag with `!closing_*`) are excluded from the URDF tree and emitted to `robot_data.yaml` for downstream URDF-to-USD pipelines.
 - **Frame helpers** (`!frame_*`) let you set link origins and joint axes without remodelling. Geometry is ignored, the frame is exported.
+- **Offline frame control** rebases link orientations without moving geometry or changing joint motion. Use the generated CSV for `auto`, `keep`, or absolute non-root `world_rpy` rules, then replay it from the cached canonical model.
 - **Body-level visual-only marker.** Prefix any body name with `!` to keep it in the visual mesh but exclude it from generated collision (primitives don't wrap it, convex hulls don't expand to it).
 - **Placeholder modules** (`!dummy_*`) are RViz-visible but excluded from `robot_data.yaml`, so you can ship a complete visual model with sensors, tools, or payloads to be swapped in later.
 - **Symbolic transforms** in KaTeX (`docs/transforms.md`) plus a JSON snapshot of the entire extraction for offline analysis without Fusion.
@@ -195,24 +225,32 @@ Both packages are self-contained and launch in RViz with no edits.
 <summary>Click to see the full output tree</summary>
 
 ```text
-<robot>_description/
-├── urdf/
-│   ├── <robot>.urdf.xacro           Entry point
-│   ├── assemblies/<asm>.urdf.xacro  Per-assembly xacro macros
-│   └── <robot>.urdf                 Flat URDF for validation
-├── meshes/<assembly>/
-│   ├── <link>.dae                   Visual mesh (DAE or OBJ+MTL)
-│   └── <link>_collision.stl         Collision mesh where generated
-├── launch/display.launch.py         RViz2 visualization
-├── config/joint_state.yaml
-├── config/ros2_controllers.yaml     ros2_control config
-├── rviz/display.rviz
-├── robot_data.yaml                  Supplementary data beyond URDF
-├── docs/transforms.md               Joint transforms (KaTeX)
-├── images/robot.png                 Fusion viewport screenshot
-├── README.md                        Auto-generated package README
-├── package.xml
-└── CMakeLists.txt
+<output_dir>/
+├── <robot>_description/
+│   ├── urdf/
+│   │   ├── <robot>.urdf.xacro           Entry point
+│   │   ├── assemblies/<asm>.urdf.xacro  Per-assembly xacro macros
+│   │   └── <robot>.urdf                 Flat URDF for validation
+│   ├── meshes/<assembly>/
+│   │   ├── <link>.dae                   Visual mesh (DAE or OBJ+MTL)
+│   │   └── <link>_collision.stl         Collision mesh where generated
+│   ├── launch/display.launch.py         RViz2 visualization
+│   ├── config/joint_state.yaml
+│   ├── config/ros2_controllers.yaml     ros2_control config
+│   ├── config/frame_overrides.csv       Editable frame orientations
+│   ├── config/FRAME_OVERRIDES.md        CSV rule reference
+│   ├── rviz/display.rviz
+│   ├── robot_data.yaml                  Supplementary data beyond URDF
+│   ├── docs/transforms.md               Joint transforms (KaTeX)
+│   ├── images/robot.png                 Fusion viewport screenshot
+│   ├── README.md                        Auto-generated package README
+│   ├── package.xml
+│   └── CMakeLists.txt
+└── debug/
+    ├── snapshot.json                    Raw Fusion extraction cache
+    ├── frame_model.json                 Canonical offline reframe cache
+    ├── validation.md
+    └── export_log.md
 ```
 
 </details>
@@ -226,6 +264,7 @@ Both packages are self-contained and launch in RViz with no edits.
 | [Design Rules](DESIGN_RULES.md) | Required conventions and reserved prefixes |
 | [ROS 2 Usage](docs/ROS2.md) | Build, launch, RViz2, validation, topics |
 | [Customizing](docs/CUSTOMIZING.md) | Collision options, mesh settings, prefixes |
+| [Testing](docs/TESTING.md) | Local CI-equivalent checks, suites, examples, and offline tools |
 | [Limitations](docs/LIMITATIONS.md) | Known gaps and tradeoffs (read this before you file a bug) |
 
 

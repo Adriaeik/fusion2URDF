@@ -41,6 +41,40 @@ A `!dummy_` assembly (for example `!dummy_camera`, exported as the
 
 New joints are added in Fusion 360 by creating joints between components. The exporter automatically detects joint type (revolute, prismatic, fixed) from the Fusion joint's motion type.
 
+## Adjusting Frames After Export
+
+With `[frames].convention = "ros"` (the default), the root frame follows the
+Fusion design world with `X` forward and `Z` up, and revolute or continuous
+joints use the child link's local `+Z` axis. The exporter compensates visual,
+collision, joint, center-of-mass, and inertia transforms, so this coordinate
+change does not move the mechanism or alter mesh vertices.
+
+A verbose export writes `config/frame_overrides.csv`. Its supported rules are:
+
+- `auto`: apply the default convention
+- `keep`: retain the extracted link orientation
+- `world_rpy`: give a non-root link an absolute design-world orientation from
+  `post_roll_deg`, `post_pitch_deg`, and `post_yaw_deg`
+
+After editing the CSV, regenerate the frame-dependent files without opening
+Fusion or exporting meshes again:
+
+```powershell
+python tools/reframe.py <path-to-description-package>
+```
+
+The command uses the matching `debug/frame_model.json` cache. For an older
+package that has `debug/snapshot.json` but no frame cache, bootstrap once from
+the snapshot and the meshes already in the package:
+
+```powershell
+python tools/reframe.py <path-to-description-package> --snapshot <path-to-debug/snapshot.json>
+```
+
+These overrides are intentionally orientation-only. To move a link origin or
+joint axis position, add a correctly placed `!frame_*` helper in Fusion and
+export again.
+
 ## Collision Strategy
 
 During export you usually choose the collision method through a two-step
