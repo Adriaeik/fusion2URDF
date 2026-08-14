@@ -3148,8 +3148,9 @@ def _export_merged_visual_obj(
         # link's frame is the ANCHOR's component frame.  When the anchor
         # is placed at identity within the LCA (the typical case — pendel
         # in pendel_with_esp), no correction is needed.  Otherwise,
-        # transform vertices using the anchor's local transform to
-        # express them in anchor-local coordinates.
+        # derive the anchor pose relative to that LCA from both
+        # occurrences' design-world transforms, then express the vertices
+        # in anchor-local coordinates.
         _maybe_apply_anchor_frame_correction(
             obj_path, anchor_occ, lca_path, snapshot, log,
         )
@@ -3181,14 +3182,67 @@ def _maybe_apply_anchor_frame_correction(
     Solving for v_anchor:
         v_anchor = R_anchor_in_LCAᵀ · (v_LCA - t_anchor_in_LCA)
     """
-    # Compute anchor's pose relative to LCA.  When LCA is rootComponent
-    # (lca_path == ""), use the anchor's transform2 (which is in root
-    # frame).  Otherwise, compute (LCA_transform2)⁻¹ · anchor_transform2
-    # — but in practice the simpler check below covers the cases we hit.
-    if anchor_occ.local_transform is None:
+    # Compute the anchor pose in the frame Fusion used for the OBJ.  A
+    # nested occurrence's ``local_transform`` is relative to its immediate
+    # parent, which is not necessarily the merge LCA.  In particular, a
+    # root-spanning rigid group is exported in the design-root frame, so
+    # using that nested local transform can move the mesh metres away.
+    # ``transform2`` gives both occurrences in the design frame; compose
+    # LCA_world⁻¹ · anchor_world to get the exact pose needed here.
+    anchor_world = getattr(anchor_occ, "transform2", None)
+    if anchor_world is not None and not lca_path:
+        t_loc = anchor_world.translation
+        r_loc = anchor_world.rotation
+    elif anchor_world is not None:
+        lca_occ = snapshot.occurrences.get(lca_path)
+        lca_world = getattr(lca_occ, "transform2", None) if lca_occ else None
+        if lca_world is not None:
+            from .robot_model import (
+                _mat3_mul, _mat3_transpose, _rotate_vec3_by_mat3,
+                _vec_sub,
+            )
+
+            r_lca_inv = _mat3_transpose(lca_world.rotation)
+            t_loc = _rotate_vec3_by_mat3(
+                _vec_sub(anchor_world.translation, lca_world.translation),
+                r_lca_inv,
+            )
+            r_loc = _mat3_mul(r_lca_inv, anchor_world.rotation)
+        else:
+            local = getattr(anchor_occ, "local_transform", None)
+            if local is None:
+                log.warning(
+                    "    Cannot correct merged OBJ into anchor frame: "
+                    f"LCA '{lca_path}' and anchor lack usable transforms"
+                )
+                return
+            log.warning(
+                "    Merge LCA lacks transform2; falling back to the "
+                "anchor's immediate-parent local transform"
+            )
+            t_loc = local.translation
+            r_loc = local.rotation
+    else:
+        local = getattr(anchor_occ, "local_transform", None)
+        if local is None:
+            log.warning(
+                "    Cannot correct merged OBJ into anchor frame: anchor "
+                "lacks transform2 and local_transform"
+            )
+            return
+        log.warning(
+            "    Merge anchor lacks transform2; falling back to its local "
+            "transform"
+        )
+        t_loc = local.translation
+        r_loc = local.rotation
+
+    if not r_loc or len(r_loc) != 9:
+        log.warning(
+            "    Cannot correct merged OBJ into anchor frame: invalid "
+            "anchor rotation"
+        )
         return
-    t_loc = anchor_occ.local_transform.translation
-    r_loc = anchor_occ.local_transform.rotation
 
     is_identity = (
         abs(t_loc[0]) < 1e-9 and abs(t_loc[1]) < 1e-9 and abs(t_loc[2]) < 1e-9

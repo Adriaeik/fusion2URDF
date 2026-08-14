@@ -3,6 +3,7 @@ __pycache__/
 
 # Runtime export artifacts — regenerated on every run.
 debug/
+/test_exports/
 
 # Personal exporter config — copy from xacro_export.template.toml
 # and edit; the personal file stays local so each contributor can
@@ -14,5 +15,10 @@ xacro_export.toml
 !.vscode/settings.json
 
 # Test scratch
-.test_tmp/
-.test_tmp_ci/
+.test_tmp*/
+.codex_tmp/
+.codex_verify_tmp*/
+fusion_root_bodies_*/
+.pytest_cache/
+.coverage
+htmlcov/

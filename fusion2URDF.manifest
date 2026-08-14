@@ -1,7 +1,7 @@
 {
     "autodeskProduct": "Fusion360",
     "type": "script",
-    "version": "2",
+    "version": "3.1",
     "author": "Adrian Valaker Eikeland",
     "description": {
         "": "fusion2URDF — export the active Fusion 360 assembly to a complete ROS 2 robot_description package: hierarchical xacro, meshes, collision, and ros2_control."

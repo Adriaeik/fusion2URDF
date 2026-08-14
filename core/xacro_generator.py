@@ -17,6 +17,7 @@ Author: Adrian Valaker Eikeland
 
 import math
 import os
+import re
 import xml.dom.minidom
 from typing import Dict, List, Optional, Set
 
@@ -203,7 +204,7 @@ def _generate_top_level_xacro(
     # Instantiate macros
     lines.append('  <!-- Instantiate assemblies -->')
     for asm_name in assembly_names:
-        lines.append(f'  <xacro:{asm_name} prefix=""/>')
+        lines.append(f'  <xacro:{_xacro_macro_name(asm_name)} prefix=""/>')
     lines.append('')
     
     # Mount joints (cross-assembly connections)
@@ -251,7 +252,7 @@ def _generate_assembly_xacro(
     lines.append('<?xml version="1.0"?>')
     lines.append(f'<robot xmlns:xacro="{XACRO_NS}" name="{asm_name}_macro">')
     lines.append('')
-    lines.append(f'  <xacro:macro name="{asm_name}" params="prefix">')
+    lines.append(f'  <xacro:macro name="{_xacro_macro_name(asm_name)}" params="prefix">')
     lines.append('')
     
     # Sort links: root-like first (by position in kinematic chain)
@@ -332,16 +333,20 @@ def _generate_link_xml(
     # Bake offset: shift from joint frame to component origin
     # Applied to visual, inertial, and collision origins
     bake = link.mesh_bake_offset if link.needs_mesh_bake else (0.0, 0.0, 0.0)
+    mesh_rpy = getattr(link, "mesh_origin_rpy", (0.0, 0.0, 0.0))
     
     lines.append(f'{pad}<link name="{name}">')
     
     # Inertial — CoM is relative to component origin, shift by bake offset
     mass = max(link.mass_kg, MIN_MASS)
-    com = (
-        link.com_link_local[0] + bake[0],
-        link.com_link_local[1] + bake[1],
-        link.com_link_local[2] + bake[2],
-    )
+    if getattr(link, "inertial_origin_xyz", None) is not None:
+        com = link.inertial_origin_xyz
+    else:
+        com = (
+            link.com_link_local[0] + bake[0],
+            link.com_link_local[1] + bake[1],
+            link.com_link_local[2] + bake[2],
+        )
     inertia = link.inertia_at_com
     ixx = max(abs(inertia.ixx), MIN_INERTIA)
     iyy = max(abs(inertia.iyy), MIN_INERTIA)
@@ -367,7 +372,8 @@ def _generate_link_xml(
     # silent failure in many parsers).
     if link.has_visual_mesh and link.mesh_visual:
         lines.append(f'{pad}  <visual>')
-        lines.append(f'{pad}    <origin xyz="{bake[0]:.6f} {bake[1]:.6f} {bake[2]:.6f}" rpy="0 0 0"/>')
+        lines.append(f'{pad}    <origin xyz="{bake[0]:.6f} {bake[1]:.6f} {bake[2]:.6f}" '
+                     f'rpy="{mesh_rpy[0]:.6f} {mesh_rpy[1]:.6f} {mesh_rpy[2]:.6f}"/>')
         lines.append(f'{pad}    <geometry>')
         lines.append(f'{pad}      <mesh filename="package://{config.package_name}/{link.mesh_visual}" scale="{visual_scale}"/>')
         lines.append(f'{pad}    </geometry>')
@@ -391,8 +397,10 @@ def _generate_link_xml(
         # Collision STL (explicit from Fusion, or generated automatically).
         # STL is always in centimeters (rescaled at export); scale="0.01".
         coll_scale = _scale_for_mesh(collision.mesh_path)
+        coll_rpy = getattr(collision, "origin_rpy", (0.0, 0.0, 0.0))
         lines.append(f'{pad}  <collision>')
-        lines.append(f'{pad}    <origin xyz="{coll_origin[0]:.6f} {coll_origin[1]:.6f} {coll_origin[2]:.6f}" rpy="0 0 0"/>')
+        lines.append(f'{pad}    <origin xyz="{coll_origin[0]:.6f} {coll_origin[1]:.6f} {coll_origin[2]:.6f}" '
+                     f'rpy="{coll_rpy[0]:.6f} {coll_rpy[1]:.6f} {coll_rpy[2]:.6f}"/>')
         lines.append(f'{pad}    <geometry>')
         lines.append(f'{pad}      <mesh filename="package://{config.package_name}/{collision.mesh_path}" scale="{coll_scale}"/>')
         lines.append(f'{pad}    </geometry>')
@@ -401,7 +409,8 @@ def _generate_link_xml(
         # Fallback: use visual mesh as collision (only when the visual
         # actually exists — otherwise we'd reference a missing file).
         lines.append(f'{pad}  <collision>')
-        lines.append(f'{pad}    <origin xyz="{bake[0]:.6f} {bake[1]:.6f} {bake[2]:.6f}" rpy="0 0 0"/>')
+        lines.append(f'{pad}    <origin xyz="{bake[0]:.6f} {bake[1]:.6f} {bake[2]:.6f}" '
+                     f'rpy="{mesh_rpy[0]:.6f} {mesh_rpy[1]:.6f} {mesh_rpy[2]:.6f}"/>')
         lines.append(f'{pad}    <geometry>')
         lines.append(f'{pad}      <mesh filename="package://{config.package_name}/{link.mesh_visual}" scale="{visual_scale}"/>')
         lines.append(f'{pad}    </geometry>')
@@ -543,6 +552,20 @@ def _order_links(
 def _xml_safe(s: str) -> str:
     """Make string safe for XML attribute."""
     return s.replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _xacro_macro_name(assembly_name: str) -> str:
+    """Return an XML-NCName-safe xacro macro/call name.
+
+    Fusion assembly names often begin with a part number (for example
+    ``10034_Servo_Pack``).  That is valid as a filename but invalid as the
+    local part of ``<xacro:...>``.  Prefix only when needed so ordinary macro
+    names remain stable.
+    """
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", assembly_name or "assembly")
+    if not re.match(r"[A-Za-z_]", name):
+        name = f"assembly_{name}"
+    return name
 
 
 def _scale_for_mesh(mesh_path: str) -> str:

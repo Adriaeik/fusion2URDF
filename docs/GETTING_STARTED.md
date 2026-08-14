@@ -136,6 +136,13 @@ collision_method = "primitive"
 # Mesh resolution from Fusion: "low", "medium", "high".
 mesh_refinement = "medium"
 
+[frames]
+# "ros" keeps the Fusion design-world root X-forward/Z-up and expresses
+# revolute/continuous motion as child-local +Z. "fusion" keeps extracted
+# orientations unless a CSV row overrides them.
+convention = "ros"
+overrides_file = "frame_overrides.csv"
+
 [ros2_control]
 # Generic mock hardware lets controller_manager start without custom drivers.
 # Replace with your real plugin when wiring real hardware.
@@ -181,6 +188,8 @@ For the special-prefix conventions (`!frame_*`, `!collision_*`, `!dummy_*`, `!pa
     launch/display.launch.py          # RViz + ros2_control bringup
     config/joint_state.yaml
     config/ros2_controllers.yaml
+    config/frame_overrides.csv        # editable post-export orientations
+    config/FRAME_OVERRIDES.md         # CSV rule reference
     rviz/display.rviz
     robot_data.yaml                   # supplementary data beyond URDF
     docs/transforms.md                # KaTeX joint transforms
@@ -188,14 +197,26 @@ For the special-prefix conventions (`!frame_*`, `!collision_*`, `!dummy_*`, `!pa
     README.md                         # auto-generated package README
     package.xml
     CMakeLists.txt
-    debug/                            # only when include_debug = true
-      snapshot.json
-      extraction_report.md
-      validation.md
-      export_log.md
+  debug/                              # sibling; include_debug = true
+    snapshot.json
+    frame_model.json                  # canonical offline reframe cache
+    extraction_report.md
+    validation.md
+    export_log.md
 ```
 
 Optional files depend on `xacro_export.toml` feature toggles and `[output].verbosity`.
+
+The frame CSV is editable. Reapply it from the repository root
+without rerunning Fusion extraction or mesh export:
+
+```powershell
+python tools/reframe.py <output_dir>/<robot>_description
+```
+
+The package's visual and physical placement stays unchanged; only its link
+coordinate orientations are rebased. Use a `!frame_*` helper and export again
+when an origin or joint-axis position must move.
 
 ## Build and launch
 

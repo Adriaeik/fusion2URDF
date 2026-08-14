@@ -55,6 +55,18 @@ collision_method = "primitive"
 # Mesh resolution from Fusion: "low", "medium", "high"
 mesh_refinement = "medium"
 
+[frames]
+# "ros" is the default post-export convention:
+#   - root frame matches Fusion design world (X forward, Z up)
+#   - revolute/continuous joints rotate about their child frame's local +Z
+# Mesh vertices are never changed; visual/collision/inertia origins compensate.
+# "fusion" keeps the extracted orientations except explicit CSV overrides.
+convention = "ros"
+
+# Generated under <package>/config/.  Edit rule/post_* columns, then run
+# tools/reframe.py to regenerate descriptions without opening Fusion.
+overrides_file = "frame_overrides.csv"
+
 [ros2_control]
 # Generic mock hardware lets the exported package start controller_manager
 # immediately. Replace with your real hardware plugin when integrating

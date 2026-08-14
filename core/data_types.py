@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple, Any
 # Version
 # ──────────────────────────────────────────────
 
-EXPORTER_VERSION = "3.0.1"
+EXPORTER_VERSION = "3.1.0"
 DESIGN_ROOT_OCCURRENCE_PATH = "__design_root__"
 
 
@@ -316,11 +316,19 @@ class LinkNode:
     
     # Position
     global_position: Vec3 = (0.0, 0.0, 0.0)    # meters, world frame
+    # Original link-local -> Fusion design-world rotation.  Kept on the
+    # Phase-2 model so the pure-Python frame postprocessor can recover the
+    # author's X-forward/Z-up design frame without calling the Fusion API.
+    source_world_rotation: Optional[Tuple[float, ...]] = None
     
     # Physical properties
     mass_kg: float = 0.0
     com_link_local: Vec3 = (0.0, 0.0, 0.0)     # CoM relative to link origin
     inertia_at_com: InertiaTensor = field(default_factory=InertiaTensor)
+    # Optional fully resolved CoM origin in the exported link frame.  The
+    # frame postprocessor sets this after composing component CoM + joint
+    # bake offset; None retains the legacy composition in the generator.
+    inertial_origin_xyz: Optional[Vec3] = None
     
     # Material & appearance
     material_name: str = ""
@@ -368,6 +376,16 @@ class LinkNode:
     # Mesh vertices need baking by this offset to avoid wobble during rotation
     mesh_bake_offset: Vec3 = (0.0, 0.0, 0.0)
     needs_mesh_bake: bool = False
+    # Rotation from the exported link frame to the unchanged mesh frame.
+    # Normally identity.  Frame rebasing changes this origin instead of
+    # rewriting mesh vertices, which keeps DAE/OBJ/STL files reusable.
+    mesh_origin_rpy: RPY = (0.0, 0.0, 0.0)
+
+    # Traceability for the post-export frame layer.  ``frame_rebase_rpy`` is
+    # the pose of the post frame in the original link frame (orientation
+    # only in v1); ``frame_rule`` records auto/keep/world_rpy.
+    frame_rebase_rpy: RPY = (0.0, 0.0, 0.0)
+    frame_rule: str = "keep"
     
     # Empty link (reference frame — no bodies, no visual/collision)
     body_count: int = 0
@@ -525,6 +543,7 @@ class CollisionInfo:
     mesh_path: str = ""             # STL/mesh file once resolved or generated
     primitive: Optional[CollisionPrimitive] = None  # For auto-generated primitives
     origin_xyz: Optional[Vec3] = None  # Override origin (for rigid group collision offset)
+    origin_rpy: RPY = (0.0, 0.0, 0.0)  # Mesh pose after optional frame rebasing
     
     @property
     def uses_primitive(self) -> bool:
@@ -607,6 +626,13 @@ class ExportConfig:
     # URDF options
     use_xacro: bool = False         # Phase 3.1: plain URDF. Future: xacro
     robot_prefix: str = ""          # For multi-robot (empty = no prefix)
+
+    # Post-export frame convention.  ``ros`` aligns the root with Fusion's
+    # design world (X forward, Z up) and makes every revolute/continuous
+    # joint axis local +Z without changing mesh vertices.  ``fusion`` keeps
+    # extracted link frames unless a CSV row explicitly overrides one.
+    frame_convention: str = "ros"
+    frame_overrides_filename: str = "frame_overrides.csv"
 
     # Optional output toggles — controllable via xacro_export.toml.
     # ``verbosity`` is a preset that sets the include_* fields below,

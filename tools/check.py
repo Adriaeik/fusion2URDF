@@ -17,7 +17,6 @@ No external dependencies.
 Author: Adrian Valaker Eikeland
 """
 
-import json
 import os
 import sys
 from datetime import datetime
@@ -28,128 +27,9 @@ _parent = os.path.dirname(_pkg_root)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from fusion2URDF.core.data_types import (
-    FusionSnapshot, FusionOccurrence, FusionJoint,
-    InertiaTensor, Transform3D, RigidGroupInfo,
-)
+from fusion2URDF.core.snapshot_io import load_snapshot
 from fusion2URDF.core.robot_model import build_model
 from fusion2URDF.utils.logger import Logger
-
-
-# ──────────────────────────────────────────────
-# Snapshot loader (JSON dict → dataclass)
-# ──────────────────────────────────────────────
-
-def load_snapshot(path: str) -> FusionSnapshot:
-    """Load a FusionSnapshot from a JSON file."""
-    with open(path) as f:
-        data = json.load(f)
-    return _snapshot_from_dict(data)
-
-
-def _snapshot_from_dict(data: dict) -> FusionSnapshot:
-    """Reconstruct FusionSnapshot dataclass tree from JSON dict."""
-    snap = FusionSnapshot(
-        design_name=data.get('design_name', ''),
-        design_name_clean=data.get('design_name_clean', ''),
-        root_component_name=data.get('root_component_name', ''),
-        export_timestamp=data.get('export_timestamp', ''),
-        total_occurrences=data.get('total_occurrences', 0),
-        total_subassemblies=data.get('total_subassemblies', 0),
-        total_leaf_components=data.get('total_leaf_components', 0),
-        total_joints=data.get('total_joints', 0),
-        total_regular_joints=data.get('total_regular_joints', 0),
-        total_as_built_joints=data.get('total_as_built_joints', 0),
-        max_nesting_depth=data.get('max_nesting_depth', 0),
-    )
-
-    for path, od in data.get('occurrences', {}).items():
-        def _parse_tf(tdata):
-            if not tdata:
-                return Transform3D()
-            t_trans = tdata.get('translation', [0, 0, 0])
-            t_rot = tdata.get('rotation', [1, 0, 0, 0, 1, 0, 0, 0, 1])
-            if t_rot and isinstance(t_rot[0], list):
-                t_rot = tuple(v for row in t_rot for v in row)
-            else:
-                t_rot = tuple(t_rot) if t_rot else (1, 0, 0, 0, 1, 0, 0, 0, 1)
-            return Transform3D(translation=tuple(t_trans), rotation=t_rot)
-
-        local_tf = _parse_tf(od.get('local_transform', {}))
-        t2 = od.get('transform2')
-        transform2 = _parse_tf(t2) if t2 else None
-
-        i_com = od.get('inertia_at_com', {})
-        i_orig = od.get('inertia_at_origin', {})
-
-        occ = FusionOccurrence(
-            full_path=od.get('full_path', path),
-            component_name=od.get('component_name', ''),
-            clean_name=od.get('clean_name', ''),
-            path_segments=od.get('path_segments', []),
-            depth=od.get('depth', 0),
-            is_subassembly=od.get('is_subassembly', False),
-            global_position=tuple(od.get('global_position', [0, 0, 0])),
-            local_transform=local_tf,
-            transform2=transform2,
-            assembly_context_depth=od.get('assembly_context_depth', 0),
-            mass_kg=od.get('mass_kg', 0),
-            body_count=od.get('body_count', 0),
-            com_component_local=tuple(od.get('com_component_local', [0, 0, 0])),
-            com_global=tuple(od.get('com_global', [0, 0, 0])),
-            inertia_at_origin=InertiaTensor(**i_orig) if i_orig else InertiaTensor(),
-            inertia_at_com=InertiaTensor(**i_com) if i_com else InertiaTensor(),
-            bbox_size=tuple(od.get('bbox_size', [0, 0, 0])),
-            volume_m3=od.get('volume_m3', 0),
-            area_m2=od.get('area_m2', 0),
-            material_name=od.get('material_name', ''),
-            appearance_name=od.get('appearance_name', ''),
-            appearance_color_rgb=tuple(od['appearance_color_rgb']) if od.get('appearance_color_rgb') else None,
-        )
-        snap.occurrences[path] = occ
-
-    for jname, jd in data.get('joints', {}).items():
-        def _opt_vec(key):
-            v = jd.get(key)
-            return tuple(v) if v else None
-
-        joint = FusionJoint(
-            name=jd.get('name', jname),
-            joint_source=jd.get('joint_source', ''),
-            defining_component=jd.get('defining_component', ''),
-            motion_type=jd.get('motion_type', 'rigid'),
-            occurrence_one_path=jd.get('occurrence_one_path', ''),
-            occurrence_one_clean=jd.get('occurrence_one_clean', ''),
-            occurrence_two_path=jd.get('occurrence_two_path', ''),
-            occurrence_two_clean=jd.get('occurrence_two_clean', ''),
-            geometry_origin_cm=_opt_vec('geometry_origin_cm'),
-            geometry_or_origin_one_cm=_opt_vec('geometry_or_origin_one_cm'),
-            geometry_or_origin_two_cm=_opt_vec('geometry_or_origin_two_cm'),
-            occ_one_transform_cm=_opt_vec('occ_one_transform_cm'),
-            occ_one_transform2_cm=_opt_vec('occ_one_transform2_cm'),
-            occ_one_global_cm=_opt_vec('occ_one_global_cm'),
-            origin_global_m=tuple(jd.get('origin_global_m', [0, 0, 0])),
-            origin_source=jd.get('origin_source', ''),
-            axis_vector=tuple(jd.get('axis_vector', [0, 0, 1])),
-            has_rotation_limits=jd.get('has_rotation_limits', False),
-            rotation_min=jd.get('rotation_min'),
-            rotation_max=jd.get('rotation_max'),
-            has_slide_limits=jd.get('has_slide_limits', False),
-            slide_min_m=jd.get('slide_min_m'),
-            slide_max_m=jd.get('slide_max_m'),
-        )
-        snap.joints[jname] = joint
-
-    for rg_data in data.get('rigid_groups', []):
-        snap.rigid_groups.append(RigidGroupInfo(
-            name=rg_data.get('name', ''),
-            occurrence_paths=rg_data.get('occurrence_paths', []),
-            member_clean_names=rg_data.get('member_clean_names', []),
-            collision_member=rg_data.get('collision_member'),
-            collision_path=rg_data.get('collision_path'),
-        ))
-
-    return snap
 
 
 # ──────────────────────────────────────────────

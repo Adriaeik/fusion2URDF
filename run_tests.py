@@ -31,6 +31,14 @@ if result.returncode != 0:
     sys.exit(result.returncode)
 
 result = subprocess.run(
+    [sys.executable, '-m', 'fusion2URDF.tests.test_frame_rebaser'],
+    cwd=grandparent
+)
+
+if result.returncode != 0:
+    sys.exit(result.returncode)
+
+result = subprocess.run(
     [sys.executable, '-m', 'fusion2URDF.tests.test_export_pipeline'],
     cwd=grandparent
 )
