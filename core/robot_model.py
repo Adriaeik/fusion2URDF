@@ -2528,6 +2528,8 @@ def _compute_joint_global_origin(
 
       0. World-proxied geometry (``origin_is_world`` / ``*_world`` source)
           - already root-frame from ``createForAssemblyContext``
+      0b. Joints owned by the design root - Fusion reports their geometry
+          in the root frame, which is the world frame; use as-is
       1. geometryOrOriginOne x child occurrence world pose
       2. geometryOrOriginTwo x parent occurrence world pose
       3. geometry.origin lifted through the defining sub-assembly pose
@@ -2544,6 +2546,19 @@ def _compute_joint_global_origin(
     # Re-lifting through the child pose would double-apply the sub-asm
     # transform and put pivots metres away from the hinge.
     if fj.origin_is_world or str(fj.origin_source).endswith("_world"):
+        return fj.origin_global_m
+
+    # 0b) Joints owned by the design root. Fusion reports joint geometry in
+    # the owning component's frame, and for the root that frame *is* the
+    # world frame (the extractor never proxies root joints, so
+    # ``origin_is_world`` stays False). Lifting geometryOrOriginOne/Two
+    # through the child/parent occurrence pose would apply that pose a
+    # second time: on the Assem1 example every root joint drifted 0.5-2 m
+    # from its hinge, and BohnChen saw the same scatter on Dummy_URDF v3.
+    # No One/Two agreement check here - sliders with travel and joints
+    # with a Fusion offset legitimately report different One/Two points,
+    # and both are still world-frame.
+    if edge.defining_component == snapshot.design_name_clean:
         return fj.origin_global_m
 
     # 1) Child-side joint geometry in the child occurrence's local frame.

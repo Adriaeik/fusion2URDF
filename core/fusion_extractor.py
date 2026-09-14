@@ -1237,7 +1237,9 @@ def _pick_joint_origin(fj: FusionJoint):
     occurrence's* component-local frame (Autodesk forum / API practice),
     NOT the defining assembly frame. Phase 2
     (``_compute_joint_global_origin``) therefore prefers lifting those
-    through the occurrence world pose. ``geometry.origin`` remains the
+    through the occurrence world pose. Joints owned by the design root are
+    the exception: Fusion reports their geometry in the root (world) frame
+    and Phase 2 uses those values as-is. ``geometry.origin`` remains the
     Phase-1 pick for backwards-compatible snapshots that lack the
     per-side origin fields; Phase 2 still upgrades to occ1/occ2 when
     those fields are present.

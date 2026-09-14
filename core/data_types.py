@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple, Any
 # Version
 # ──────────────────────────────────────────────
 
-EXPORTER_VERSION = "3.1.0"
+EXPORTER_VERSION = "3.1.1"
 DESIGN_ROOT_OCCURRENCE_PATH = "__design_root__"
 
 

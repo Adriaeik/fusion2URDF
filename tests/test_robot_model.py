@@ -645,6 +645,28 @@ def test_real_snapshot():
     snap = _make_snapshot(data)
     log = _make_logger()
     model = build_model(snap, log)
+
+    # ── Assem1 regression: root-owned joint origins ──
+    # The shipped examples/Assem1_description URDF (v3.0.0) is the ground
+    # truth for these six root-owned joints. The 3.0.1 child-pose lift
+    # double-applied the occurrence pose and moved them 0.5-2 m.
+    if getattr(snap, "design_name_clean", "") == "Assem1":
+        expected_xyz = {
+            "Revolute_1": (0.0, 0.17, 0.0),
+            "Revolute_2": (0.2, 0.49, 0.03),
+            "Revolute3": (0.1, 1.0, 0.0),
+            "Revolute4": (0.189, 0.1, 0.12),
+            "Revolute6": (0.899, 0.0, 0.0),
+            "griper_joint": (-0.152521, 0.0075, 0.0243),
+        }
+        for jname, exp in expected_xyz.items():
+            j = model.joints.get(jname)
+            assert j is not None, f"Assem1 joint '{jname}' missing from model"
+            for i in range(3):
+                assert abs(j.origin_xyz[i] - exp[i]) < 1e-5, (
+                    f"Assem1 {jname} origin_xyz[{i}]={j.origin_xyz[i]:.6f}, "
+                    f"expected {exp[i]} (root-owned joint double-lifted?)"
+                )
     
     # ── Structural assertions (snapshot-agnostic) ──
     
@@ -2520,6 +2542,113 @@ def test_world_proxied_joint_origin_not_double_lifted_and_bakes():
     print(" world_proxied_joint_origin_not_double_lifted_and_bakes: PASS")
 
 
+def test_root_owned_joint_geometry_is_world_not_lifted():
+    """Root-owned joints already report geometry in the world frame.
+
+    Fusion returns ``geometryOrOriginOne/Two`` in the owning component's
+    frame. For joints created directly in the design root that frame is
+    the world frame, and the extractor never proxies root joints, so
+    ``origin_is_world`` stays False. Phase 2 must use the point as-is:
+    lifting it through the child occurrence pose (the 3.0.1 behaviour)
+    applied the pose twice and scattered every root joint on the Assem1
+    example by 0.5-2 m. One/Two disagreement (slider travel, Fusion joint
+    offsets) must not re-enable the lift either.
+    """
+    import math
+    from ..core.data_types import (
+        FusionSnapshot, FusionOccurrence, FusionJoint, Transform3D,
+    )
+    from ..core.robot_model import build_model
+
+    # Child occurrence rotated 90 deg about Z and translated, so any lift
+    # through this pose moves the point far from its true location.
+    c, s = math.cos(math.pi / 2), math.sin(math.pi / 2)
+    R_child = (c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
+    child_world = (0.4684, -0.1505, -0.5903)
+    hand_world = (0.9621, -0.1049, -1.0640)
+    hinge_world = (0.30, 0.20, -0.50)        # world metres, root-owned
+    slide_one_world = (0.70, -0.10, -0.80)   # child-side point
+    slide_two_world = (0.75, -0.10, -0.80)   # parent-side: 5 cm of travel
+
+    snap = FusionSnapshot(
+        design_name="demo", design_name_clean="demo", root_component_name="demo",
+    )
+    snap.occurrences = {
+        "base:1": FusionOccurrence(
+            full_path="base:1", component_name="base", clean_name="base",
+            path_segments=["base"], depth=0, mass_kg=1.0, body_count=1,
+            global_position=(0.0, 0.0, 0.0),
+            local_transform=Transform3D(), transform2=Transform3D(),
+        ),
+        "arm:1": FusionOccurrence(
+            full_path="arm:1", component_name="arm", clean_name="arm",
+            path_segments=["arm"], depth=0, mass_kg=0.5, body_count=1,
+            global_position=child_world,
+            local_transform=Transform3D(translation=child_world, rotation=R_child),
+            transform2=Transform3D(translation=child_world, rotation=R_child),
+        ),
+        "hand:1": FusionOccurrence(
+            full_path="hand:1", component_name="hand", clean_name="hand",
+            path_segments=["hand"], depth=0, mass_kg=0.2, body_count=1,
+            global_position=hand_world,
+            local_transform=Transform3D(translation=hand_world),
+            transform2=Transform3D(translation=hand_world),
+        ),
+    }
+    snap.joints = {
+        "shoulder": FusionJoint(
+            name="shoulder", joint_source="regular",
+            defining_component="demo",               # owned by the design root
+            occurrence_one_path="arm:1", occurrence_one_clean="arm",
+            occurrence_two_path="base:1", occurrence_two_clean="base",
+            geometry_or_origin_one_cm=tuple(v * 100.0 for v in hinge_world),
+            geometry_or_origin_two_cm=tuple(v * 100.0 for v in hinge_world),
+            origin_global_m=hinge_world,
+            origin_source="geometryOrOriginOne",
+            origin_is_world=False,                   # root joints are never proxied
+            motion_type="revolute", axis_vector=(0.0, 0.0, 1.0),
+            has_rotation_limits=True, rotation_min=-1.0, rotation_max=1.0,
+        ),
+        "slide": FusionJoint(
+            name="slide", joint_source="regular",
+            defining_component="demo",
+            occurrence_one_path="hand:1", occurrence_one_clean="hand",
+            occurrence_two_path="arm:1", occurrence_two_clean="arm",
+            geometry_or_origin_one_cm=tuple(v * 100.0 for v in slide_one_world),
+            geometry_or_origin_two_cm=tuple(v * 100.0 for v in slide_two_world),
+            origin_global_m=slide_one_world,
+            origin_source="geometryOrOriginOne",
+            origin_is_world=False,
+            motion_type="slider", axis_vector=(1.0, 0.0, 0.0),
+            has_slide_limits=True, slide_min_m=0.0, slide_max_m=0.1,
+        ),
+    }
+
+    model = build_model(snap, _make_logger())
+    assert not model.errors, f"unexpected errors: {model.errors}"
+
+    shoulder = model.joints["shoulder"]
+    for i in range(3):
+        assert abs(shoulder.origin_global[i] - hinge_world[i]) < 1e-9, (
+            f"shoulder origin_global[{i}]={shoulder.origin_global[i]}, "
+            f"expected world point {hinge_world[i]} (double-lift?)"
+        )
+    # Parent is the root link at the world origin, so the URDF origin
+    # equals the world point.
+    for i in range(3):
+        assert abs(shoulder.origin_xyz[i] - hinge_world[i]) < 1e-9
+
+    slide = model.joints["slide"]
+    for i in range(3):
+        assert abs(slide.origin_global[i] - slide_one_world[i]) < 1e-9, (
+            f"slide origin_global[{i}]={slide.origin_global[i]}, "
+            f"expected child-side world point {slide_one_world[i]} "
+            f"(One/Two disagreement must not re-enable the lift)"
+        )
+
+    print(" root_owned_joint_geometry_is_world_not_lifted: PASS")
+
+
 def test_occ_one_global_prefers_transform2_over_buggy_walk():
     """When geometry origins are missing, Phase 1 may store a wrong
     ``occ_one_global`` from the translation-only assemblyContext walk.
@@ -2974,6 +3103,7 @@ def run_all():
     test_mirrored_subasm_axis_not_double_rotated()
     test_mirrored_subasm_joint_origin_uses_occurrence_local_geometry()
     test_world_proxied_joint_origin_not_double_lifted_and_bakes()
+    test_root_owned_joint_geometry_is_world_not_lifted()
     test_occ_one_global_prefers_transform2_over_buggy_walk()
     test_passive_joint_propagates_flag()
     test_link_properties_preserved()

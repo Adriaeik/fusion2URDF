@@ -22,7 +22,9 @@ proxies them with `createForAssemblyContext`. Exporter v3.0.1+ does this
 automatically so mesh bake can place the URDF link frame on the real hinge.
 If a movable joint still logs a fallback to `occ_one_transform2`, add a
 `!frame_*` at that hinge or recreate the joint so Fusion exposes a joint
-origin.
+origin. Joints created directly in the design root are different: Fusion
+reports their geometry in root (world) coordinates, and the exporter uses
+those values as-is.
 
 Orientation cleanup no longer requires rebuilding the assembly. The default
 post-export ROS convention keeps the Fusion design-world root `X` forward and
