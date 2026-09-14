@@ -4,6 +4,18 @@ All notable changes to **fusion2URDF** are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.1.1] - 2026-09-14
+
+### Fixed
+
+- Joints defined directly in the design root no longer have their
+  `geometryOrOriginOne/Two` geometry lifted through the child/parent
+  occurrence pose. Fusion already reports root-owned joint geometry in
+  root/world coordinates, so the lift introduced in 3.0.1 applied the
+  occurrence pose twice and scattered root-level joints (and the mesh bakes
+  derived from them) by up to metres. Reported and first patched by
+  [@BohnChen](https://github.com/BohnChen/fusion2URDF-root-joint-fixed).
+
 ## [3.1.0] - 2026-08-14
 
 ### Added
